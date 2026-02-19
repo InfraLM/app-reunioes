@@ -5,14 +5,6 @@ const { getConferenceDetails, getGoogleDriveLink, getRecording, getTranscript, g
 const { sendWebhook } = require("../api/webhook");
 const { getUserEmail } = require("./userRegistry");
 
-// ⭐ NOVO: Importar Prisma para salvar reuniões no banco
-let prisma = null;
-try {
-    prisma = require("../lib/prisma").default;
-} catch (error) {
-    logger.warn("Prisma not initialized. Database save will be skipped.");
-}
-
 const pubsub = new PubSub({
     projectId: config.google.projectId,
     credentials: {
@@ -230,31 +222,6 @@ async function processCompleteConference(conferenceId) {
 
         await sendWebhook(payload);
         updateConferenceLog(conferenceId, "Webhook enviado com sucesso!");
-
-        // ⭐ NOVO: Salvar reunião no banco de dados Prisma
-        if (prisma) {
-            try {
-                await prisma.eppReunioesGovernanca.create({
-                    data: {
-                        conference_id: conferenceId,
-                        titulo_reuniao: payload.meeting_title,
-                        data_reuniao: payload.start_time ? new Date(payload.start_time) : null,
-                        hora_inicio: payload.start_time || null,
-                        hora_fim: payload.end_time || null,
-                        responsavel: payload.account_email,
-                        link_gravacao: payload.recording_url,
-                        link_transcricao: payload.transcript_url,
-                        link_anotacao: payload.smart_notes_url,
-                    }
-                });
-                updateConferenceLog(conferenceId, "Reunião salva no banco de dados!");
-                logger.info(`Conference ${conferenceId} saved to database successfully.`);
-            } catch (dbError) {
-                // Se der erro (ex: duplicado), apenas loga mas não quebra o fluxo
-                logger.error(`Failed to save conference to database: ${dbError.message}`);
-                updateConferenceLog(conferenceId, `Aviso: Erro ao salvar no banco (${dbError.message})`);
-            }
-        }
 
         state.status = "complete";
 
