@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "npm run build:frontend && npm run build:backend",
     "build:frontend": "tsc -b && vite build",
-    "build:backend": "cd backend && npm install && npm run build",
+    "build:backend": "cd backend && npm install && npx prisma generate && npm run build",
     "vercel-build": "npm run build",
     "lint": "eslint .",
     "preview": "vite preview"
