@@ -59,14 +59,17 @@ export const reunioesService = {
   },
 };
 
-// Serviço de monitoramento (sem autenticação)
+// URL do app cPanel (listener de assinaturas do Google Meet)
+const CPANEL_URL = import.meta.env.VITE_CPANEL_URL || 'https://lmedu.com.br/reunioes';
+
+// Serviço de monitoramento — aponta para o servidor cPanel
 export const monitorService = {
   status: async () => {
-    const response = await axios.get('/api/status');
+    const response = await axios.get(`${CPANEL_URL}/health`);
     return response.data;
   },
   enviarWebhook: async (conferenceId: string) => {
-    const response = await axios.post(`/api/send-webhook/${conferenceId}`);
+    const response = await axios.post(`${CPANEL_URL}/api/send-webhook/${conferenceId}`);
     return response.data;
   },
 };
