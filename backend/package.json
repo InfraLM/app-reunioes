@@ -1,27 +1,40 @@
 {
   "name": "app-reunioes",
   "version": "1.0.0",
-  "description": "Backend de rotas da API (auth, reunioes, chat)",
+  "description": "Sistema de monitoramento de reuniões do Google Meet com autenticação",
   "main": "dist/index.js",
   "scripts": {
+    "dev": "cross-env NODE_ENV=development node src/index.js",
     "build": "tsc",
+    "start": "node src/index.js",
     "generate": "prisma generate",
     "postinstall": "prisma generate"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.77.0",
+    "@google-apps/meet": "^0.7.1",
+    "@google-cloud/pubsub": "^4.3.3",
+    "@prisma/adapter-pg": "^6.2.0",
     "@prisma/client": "^6.2.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
     "@types/jsonwebtoken": "^9.0.5",
     "@types/node": "^20.10.6",
+    "@types/pg": "^8.11.0",
+    "axios": "^1.6.8",
     "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "googleapis": "^171.4.0",
     "jsonwebtoken": "^9.0.2",
-    "typescript": "^5.3.3"
+    "pg": "^8.11.3",
+    "typescript": "^5.3.3",
+    "winston": "^3.13.0"
   },
   "devDependencies": {
+    "cross-env": "^7.0.3",
     "prisma": "^6.2.0",
     "tsx": "^4.7.0"
   }

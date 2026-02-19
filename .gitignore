@@ -23,12 +23,6 @@ dist-ssr
 # Documentation (não commitada)
 *.md
 
-# cPanel: ignorar env e node_modules (node_modules já coberto acima)
-cpanel/.env
-cpanel/src/lib/prisma.ts
-cpanel/src/middleware/
-cpanel/src/routes/
-
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
