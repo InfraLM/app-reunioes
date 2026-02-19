@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find:*)",
+      "Read(//c/devVini/meet-workspace/**)",
+      "Bash(npm install:*)",
+      "Bash(npx tailwindcss init:*)",
+      "Bash(npx prisma generate:*)",
+      "Bash(npx prisma db push:*)",
+      "Bash(node create-admin.js:*)",
+      "Bash(npm run dev:*)",
+      "Bash(curl:*)",
+      "Bash(netstat:*)",
+      "Bash(taskkill:*)",
+      "Bash(npm run build:*)",
+      "Bash(findstr:*)",
+      "Bash(dir:*)",
+      "Bash(powershell -Command \"Get-ChildItem ''C:\\\\devVini'' | Select-Object Name\")",
+      "Bash(powershell -Command:*)",
+      "Skill(claude-developer-platform)",
+      "Skill(claude-developer-platform:*)",
+      "Bash(node -e:*)",
+      "Bash(\"c:/devVini/meet-workspace/vercel.json\":*)"
+    ]
+  }
+}
