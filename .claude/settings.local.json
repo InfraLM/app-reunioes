@@ -20,7 +20,9 @@
       "Skill(claude-developer-platform)",
       "Skill(claude-developer-platform:*)",
       "Bash(node -e:*)",
-      "Bash(\"c:/devVini/meet-workspace/vercel.json\":*)"
+      "Bash(\"c:/devVini/meet-workspace/vercel.json\":*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ]
   }
 }
