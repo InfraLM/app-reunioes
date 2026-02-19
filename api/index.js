@@ -20,28 +20,11 @@ try {
 const app = express();
 
 // CORS
-const allowedOrigins = process.env.CORS_ORIGIN
-  ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim())
-  : ['https://reuniao.lmedu.com.br', 'https://*.vercel.app'];
+const corsOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim()).filter(Boolean)
+  : ['https://reuniao.lmedu.com.br', /^https:\/\/.+\.vercel\.app$/];
 
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      if (!origin || allowedOrigins.some(allowed => {
-        if (allowed.includes('*')) {
-          const regex = new RegExp(allowed.replace('*', '.*'));
-          return regex.test(origin);
-        }
-        return allowed === origin;
-      })) {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
-      }
-    },
-    credentials: true,
-  })
-);
+app.use(cors({ origin: corsOrigins, credentials: true }));
 
 app.use(express.json());
 
