@@ -1,15 +1,18 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
 
 process.env.NODE_ENV = 'production';
 
-// Importar rotas compiladas do backend
+// Importar rotas do backend via createRequire (CJS → ESM seguro)
 let authRoutes, reunioesRoutes, chatRoutes;
 try {
-  authRoutes = (await import('../backend/dist/routes/auth.js')).default;
-  reunioesRoutes = (await import('../backend/dist/routes/reunioes.js')).default;
-  chatRoutes = (await import('../backend/dist/routes/chat.js')).default;
+  authRoutes = require('../backend/src/routes/auth.js');
+  reunioesRoutes = require('../backend/src/routes/reunioes.js');
+  chatRoutes = require('../backend/src/routes/chat.js');
 } catch (error) {
   console.error('Error loading routes:', error);
 }
