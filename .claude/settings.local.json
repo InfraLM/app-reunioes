@@ -27,7 +27,8 @@
       "Bash(npx prisma migrate diff:*)",
       "Bash(c:/devVini/meet-workspace/vercel.json:*)",
       "Bash(c:/devVini/meet-workspace/.env.example:*)",
-      "Bash(node --check:*)"
+      "Bash(node --check:*)",
+      "Bash(c:/devVini/meet-workspace/.vercelignore:*)"
     ]
   }
 }

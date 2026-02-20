@@ -1,17 +1,9 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "api/**/*.js",
-      "use": "@vercel/node"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "/api/$1"
-    }
-  ],
+  "buildCommand": "npm install && cd backend && npm install && cd .. && npm run build:frontend",
+  "devCommand": "npm run dev",
+  "installCommand": "npm install && cd backend && npm install",
+  "outputDirectory": "dist",
   "crons": [
     {
       "path": "/api/cron/process-timeouts",
