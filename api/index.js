@@ -35,4 +35,7 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-export default app;
+// Para Vercel serverless
+export default (req, res) => {
+  app(req, res);
+};
