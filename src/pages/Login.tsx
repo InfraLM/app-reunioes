@@ -84,7 +84,7 @@ export default function Login() {
                 <path d="M8 2L14 5.5V10.5L8 14L2 10.5V5.5L8 2Z" fill="#0a0a0a" />
               </svg>
             </div>
-            <span className="text-white font-black text-lg">Meet Gov</span>
+            <span className="text-white font-black text-lg">Meet LM</span>
           </div>
 
           {/* Heading */}
