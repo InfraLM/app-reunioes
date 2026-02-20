@@ -4,7 +4,7 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 
 // Import dependencies
-const prisma = require('../../lib/prisma');
+const prisma = require('../../lib/prisma.cjs');
 const jwt = require('jsonwebtoken');
 const { Anthropic } = require('@anthropic-ai/sdk');
 

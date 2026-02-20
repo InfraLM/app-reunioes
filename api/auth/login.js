@@ -6,7 +6,7 @@ const require = createRequire(import.meta.url);
 // Import dependencies directly
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const prisma = require('../../lib/prisma');
+const prisma = require('../../lib/prisma.cjs');
 
 /**
  * POST /api/auth/login
