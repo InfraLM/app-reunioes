@@ -174,9 +174,6 @@ export default function ProcessamentoPage() {
                 <th className="px-7 py-5 text-left text-xs font-bold text-zinc-600 uppercase tracking-[0.12em]">
                   Status
                 </th>
-                <th className="px-7 py-5 text-left text-xs font-bold text-zinc-600 uppercase tracking-[0.12em] w-[180px] max-w-[180px]">
-                  Logs
-                </th>
               </tr>
             </thead>
             <tbody>

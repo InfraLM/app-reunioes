@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import type { ConferenceStatus } from '../../types';
-import { monitorService } from '../../lib/api';
 
 interface Props {
   conference: ConferenceStatus;
@@ -26,7 +25,6 @@ function ArtifactDot({ done, label }: { done: boolean; label: string }) {
 }
 
 export default function ConferenceRow({ conference, onRefresh, removeAt }: Props) {
-  const [sending, setSending] = useState(false);
   const [timeLeft, setTimeLeft] = useState('--:--');
   const [removeIn, setRemoveIn] = useState<string | null>(null);
 
@@ -63,19 +61,6 @@ export default function ConferenceRow({ conference, onRefresh, removeAt }: Props
       setTimeLeft('--:--');
     }
   }, [conference.status, conference.timeoutTime]);
-
-  const handleSendWebhook = async () => {
-    setSending(true);
-    try {
-      await monitorService.enviarWebhook(conference.id);
-      alert('Webhook disparado com sucesso!');
-      onRefresh();
-    } catch {
-      alert('Erro ao enviar webhook');
-    } finally {
-      setSending(false);
-    }
-  };
 
   const isTimeout = timeLeft === 'TIMEOUT';
   const isUrgent =
@@ -124,7 +109,7 @@ export default function ConferenceRow({ conference, onRefresh, removeAt }: Props
         </span>
       </td>
 
-      {/* Status + botão */}
+      {/* Status */}
       <td className="px-7 py-5">
         <span
           className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold border whitespace-nowrap ${status.bg} ${status.text} ${status.border}`}
@@ -135,16 +120,6 @@ export default function ConferenceRow({ conference, onRefresh, removeAt }: Props
             : status.label}
         </span>
 
-        {(conference.status === 'waiting' || conference.status === 'error') && (
-          <button
-            onClick={handleSendWebhook}
-            disabled={sending}
-            className="mt-3 flex items-center gap-2 px-5 py-2.5 bg-yellow-400 hover:bg-yellow-300 active:scale-[0.97] disabled:bg-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed text-black text-sm font-bold rounded-xl transition-all duration-150 cursor-pointer whitespace-nowrap select-none shadow-md shadow-yellow-400/10 hover:shadow-yellow-400/20"
-          >
-            {sending ? 'Enviando...' : 'Enviar Agora'}
-          </button>
-        )}
-
         {removeIn && (
           <div className="mt-2.5 flex items-center gap-1.5">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-600 flex-shrink-0">
@@ -153,20 +128,6 @@ export default function ConferenceRow({ conference, onRefresh, removeAt }: Props
             <span className="text-zinc-600 text-[11px] font-mono">Removendo em {removeIn}</span>
           </div>
         )}
-      </td>
-
-      {/* Logs */}
-      <td className="px-7 py-5 w-[180px] max-w-[180px]">
-        <div className="bg-[#0a0a0a] border border-zinc-800/60 rounded-xl p-3.5 max-h-28 overflow-y-auto space-y-1.5">
-          {conference.logs
-            .slice(-5)
-            .reverse()
-            .map((log, i) => (
-              <p key={i} className="text-xs font-mono text-zinc-600 leading-relaxed">
-                {log}
-              </p>
-            ))}
-        </div>
       </td>
     </tr>
   );

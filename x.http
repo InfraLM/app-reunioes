@@ -1,0 +1,10 @@
+curl -X POST https://reuniao.lmedu.com.br/api/webhooks/google-events \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": {
+      "data": "eyJ0ZXN0IjogdHJ1ZX0=",
+      "attributes": {
+        "ce-type": "google.workspace.meet.recording.v2.fileGenerated"
+      }
+    }
+  }'
