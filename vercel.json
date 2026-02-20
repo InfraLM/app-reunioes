@@ -1,9 +1,4 @@
 {
-  "version": 2,
-  "buildCommand": "npm ci && cd backend && npm ci && cd .. && npm run build:frontend",
-  "devCommand": "npm run dev",
-  "installCommand": "npm ci && cd backend && npm ci",
-  "outputDirectory": "dist",
   "crons": [
     {
       "path": "/api/cron/process-timeouts",
