@@ -1,16 +1,13 @@
 {
   "version": 2,
-  "buildCommand": "npm install && cd backend && npm install && cd .. && npm run build:frontend",
+  "buildCommand": "npm ci && cd backend && npm ci && cd .. && npm run build:frontend",
   "devCommand": "npm run dev",
-  "installCommand": "npm install && cd backend && npm install",
+  "installCommand": "npm ci && cd backend && npm ci",
   "outputDirectory": "dist",
   "crons": [
     {
       "path": "/api/cron/process-timeouts",
       "schedule": "*/5 * * * *"
     }
-  ],
-  "env": {
-    "NODE_ENV": "production"
-  }
+  ]
 }
