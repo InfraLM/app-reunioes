@@ -61,7 +61,7 @@ export default function ProcessamentoPage() {
 
   useEffect(() => {
     fetchStatus();
-    const interval = setInterval(fetchStatus, 2000);
+    const interval = setInterval(fetchStatus, 10000); // Polling a cada 10 segundos
     return () => clearInterval(interval);
   }, []);
 
