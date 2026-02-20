@@ -22,7 +22,12 @@
       "Bash(node -e:*)",
       "Bash(\"c:/devVini/meet-workspace/vercel.json\":*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(npx prisma migrate dev:*)",
+      "Bash(npx prisma migrate diff:*)",
+      "Bash(c:/devVini/meet-workspace/vercel.json:*)",
+      "Bash(c:/devVini/meet-workspace/.env.example:*)",
+      "Bash(node --check:*)"
     ]
   }
 }

@@ -5,8 +5,6 @@ import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
 
-process.env.NODE_ENV = 'production';
-
 // Importar rotas do backend via createRequire (CJS → ESM seguro)
 let authRoutes, reunioesRoutes, chatRoutes;
 try {

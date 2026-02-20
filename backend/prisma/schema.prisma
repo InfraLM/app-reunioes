@@ -63,3 +63,26 @@ model EppReunioesGovernanca {
   @@map("epp_reunioes_governanca")
   @@schema("public")
 }
+
+// Tabela 3: Rastreamento de Artefatos de Conferência (para ambiente serverless)
+model ConferenceArtifactTracking {
+  id                 String    @id @default(uuid())
+  conference_id      String    @unique // conferenceRecords/xxx
+  user_email         String? // Email do organizador
+  has_recording      Boolean   @default(false)
+  has_transcript     Boolean   @default(false)
+  has_smart_note     Boolean   @default(false)
+  recording_name     String?
+  transcript_name    String?
+  smart_note_name    String?
+  first_event_at     DateTime  @default(now())
+  last_event_at      DateTime  @default(now())
+  timeout_at         DateTime // Timeout para processar artefatos parciais
+  status             String    @default("waiting") // waiting, processing, complete, error, ignored
+  processed_at       DateTime?
+  created_at         DateTime  @default(now())
+  updated_at         DateTime  @updatedAt
+
+  @@map("epp_conference_artifact_tracking")
+  @@schema("lovable")
+}
