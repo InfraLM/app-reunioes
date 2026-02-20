@@ -26,12 +26,12 @@ app.use(cors({ origin: corsOrigins, credentials: true }));
 
 app.use(express.json());
 
-// Rotas
-if (authRoutes) app.use('/api/auth', authRoutes);
-if (reunioesRoutes) app.use('/api/reunioes', reunioesRoutes);
-if (chatRoutes) app.use('/api/chat', chatRoutes);
+// Rotas (sem prefixo /api porque já vem da URL)
+if (authRoutes) app.use('/auth', authRoutes);
+if (reunioesRoutes) app.use('/reunioes', reunioesRoutes);
+if (chatRoutes) app.use('/chat', chatRoutes);
 
-app.get('/api/health', (req, res) => {
+app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
