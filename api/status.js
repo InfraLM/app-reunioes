@@ -36,35 +36,58 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Buscar conferências sendo monitoradas
+    // Buscar conferências ativas (waiting, processing)
+    const activeConferences = await prisma.conferenceArtifactTracking.findMany({
+      where: {
+        status: { in: ['waiting', 'processing'] }
+      },
+      orderBy: {
+        first_event_at: 'desc'
+      }
+    });
+
+    // Buscar contadores
     const [waiting, processing, total] = await Promise.all([
-      // Aguardando artefatos
-      prisma.conferenceArtifactTracking.count({
-        where: { status: 'waiting' }
-      }),
-      // Em processamento
-      prisma.conferenceArtifactTracking.count({
-        where: { status: 'processing' }
-      }),
-      // Total geral
+      prisma.conferenceArtifactTracking.count({ where: { status: 'waiting' } }),
+      prisma.conferenceArtifactTracking.count({ where: { status: 'processing' } }),
       prisma.conferenceArtifactTracking.count()
     ]);
 
-    // Status do sistema serverless
+    // Transformar para o formato esperado pelo frontend (ConferenceStatus)
+    const conferences = activeConferences.map(conf => ({
+      id: conf.conference_id,
+      startTime: conf.first_event_at ? new Date(conf.first_event_at).getTime() : Date.now(),
+      timeoutTime: new Date(conf.timeout_at).getTime(),
+      artifacts: {
+        recording: conf.has_recording,
+        transcript: conf.has_transcript,
+        smartNote: conf.has_smart_note
+      },
+      status: conf.status,
+      userEmail: conf.user_email || 'Desconhecido',
+      progress: conf.status === 'waiting'
+        ? 'Aguardando artefatos...'
+        : 'Processando webhook...',
+      logs: [] // Logs podem ser implementados depois
+    }));
+
+    // Resposta no formato esperado pelo frontend
     const status = {
-      connected: true, // Sempre conectado (serverless está ativo)
-      mode: 'serverless-push', // Push-based Pub/Sub
+      conferences, // Array de conferências ativas
+      subscriptions: {
+        total: 0, // Push mode não usa subscriptions ativas
+        successful: 0,
+        failed: 0
+      },
+      connected: true,
+      mode: 'serverless-push',
       monitoring: {
         waiting,
         processing,
         total,
-        active: waiting + processing // Total ativo
+        active: waiting + processing
       },
-      timestamp: new Date().toISOString(),
-      webhook: {
-        endpoint: process.env.WEBHOOK_DESTINATION_URL ? 'configured' : 'not configured',
-        pubsub: 'push-based' // Push subscription
-      }
+      timestamp: new Date().toISOString()
     };
 
     return res.status(200).json(status);
