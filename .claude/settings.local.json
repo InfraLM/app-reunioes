@@ -28,7 +28,8 @@
       "Bash(c:/devVini/meet-workspace/vercel.json:*)",
       "Bash(c:/devVini/meet-workspace/.env.example:*)",
       "Bash(node --check:*)",
-      "Bash(c:/devVini/meet-workspace/.vercelignore:*)"
+      "Bash(c:/devVini/meet-workspace/.vercelignore:*)",
+      "Bash(git push:*)"
     ]
   }
 }
