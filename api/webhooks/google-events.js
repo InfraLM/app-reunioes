@@ -5,7 +5,7 @@ const require = createRequire(import.meta.url);
 
 // Importar módulos CommonJS
 const logger = require('../../backend/src/utils/logger');
-const prisma = require('../../backend/src/lib/prisma').default;
+const prisma = require('../../lib/prisma');
 const { getConferenceDetails, getGoogleDriveLink, getRecording, getTranscript, getSmartNote } = require('../../backend/src/api/google');
 const { sendWebhook } = require('../../backend/src/api/webhook');
 const { getUserEmail } = require('../../backend/src/services/userRegistry');

@@ -4,7 +4,7 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 
 const logger = require('../../backend/src/utils/logger');
-const prisma = require('../../backend/src/lib/prisma').default;
+const prisma = require('../../lib/prisma');
 const { getConferenceDetails, getGoogleDriveLink, getRecording, getTranscript, getSmartNote } = require('../../backend/src/api/google');
 const { sendWebhook } = require('../../backend/src/api/webhook');
 const config = require('../../backend/src/config');
