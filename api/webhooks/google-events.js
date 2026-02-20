@@ -6,7 +6,7 @@ const require = createRequire(import.meta.url);
 // Importar módulos CommonJS
 const logger = require('../../backend/src/utils/logger');
 const prisma = require('../../lib/prisma.cjs');
-const { getConferenceDetails, getGoogleDriveLink, getRecording, getTranscript, getSmartNote } = require('../../backend/src/api/google');
+const { getConferenceDetails, getGoogleDriveLink, getRecording, getTranscript, getSmartNote, getUserEmailFromDirectory } = require('../../backend/src/api/google');
 const { sendWebhook } = require('../../backend/src/api/webhook');
 const { getUserEmail } = require('../../backend/src/services/userRegistry');
 
@@ -66,8 +66,23 @@ export default async function handler(req, res) {
       return res.status(200).send('OK - No conference ID found');
     }
 
-    // 5. Obter email do usuário
-    const userEmail = getUserEmail(attributes["ce-subject"] || "");
+    // 5. Obter email do usuário via Google Directory API
+    let userEmail = null;
+    const subject = attributes["ce-subject"] || "";
+
+    // Tentar extrair userId do subject (formato: users/123456789)
+    if (subject) {
+      try {
+        userEmail = await getUserEmailFromDirectory(subject);
+        if (userEmail) {
+          logger.info(`Email do organizador encontrado: ${userEmail}`);
+        } else {
+          logger.warn(`Não foi possível obter email para: ${subject}`);
+        }
+      } catch (error) {
+        logger.error(`Erro ao buscar email do usuário:`, error);
+      }
+    }
 
     // 6. Processar evento e atualizar estado no banco de dados
     await processEventServerless(conferenceId, eventType, resourceName, userEmail, eventData);
@@ -176,10 +191,11 @@ async function processCompleteConferenceServerless(tracking) {
       data: { status: 'processing' }
     });
 
+    // Usar email do tracking ou fallback para impersonatedUser
     const impersonatedEmail = tracking.user_email || config.google.impersonatedUser;
     const organizerEmail = tracking.user_email;
 
-    // Verificar se usuário está na lista de monitorados
+    // Validar se usuário está na lista de monitorados
     if (!organizerEmail) {
       logger.warn(`Email do usuário não identificado para: ${tracking.conference_id}`);
       await prisma.conferenceArtifactTracking.update({
@@ -197,6 +213,8 @@ async function processCompleteConferenceServerless(tracking) {
       });
       return;
     }
+
+    logger.info(`Processando conferência ${tracking.conference_id} (email: ${organizerEmail})`);
 
     // Buscar detalhes da conferência
     const conferenceDetails = await getConferenceDetails(tracking.conference_id, impersonatedEmail);

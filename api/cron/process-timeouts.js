@@ -91,10 +91,11 @@ async function processTimedOutConference(tracking) {
       data: { status: 'processing' }
     });
 
+    // Usar email do tracking ou fallback para impersonatedUser
     const impersonatedEmail = tracking.user_email || config.google.impersonatedUser;
     const organizerEmail = tracking.user_email;
 
-    // Verificar se usuário está na lista de monitorados
+    // Validar se usuário está na lista de monitorados
     if (!organizerEmail) {
       logger.warn(`Email do usuário não identificado para: ${tracking.conference_id}`);
       await prisma.conferenceArtifactTracking.update({
@@ -112,6 +113,8 @@ async function processTimedOutConference(tracking) {
       });
       return;
     }
+
+    logger.info(`Processando timeout para ${tracking.conference_id} (email: ${organizerEmail})`);
 
     // Buscar detalhes da conferência
     let conferenceDetails;

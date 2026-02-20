@@ -73,10 +73,44 @@ function getGoogleDriveLink(fileId) {
     return `https://drive.google.com/file/d/${fileId}/view`;
 }
 
+/**
+ * Busca email do usuário usando Directory API
+ * @param {string} userId - ID do usuário (formato: users/123456789 ou apenas 123456789)
+ * @returns {string|null} Email do usuário ou null se não encontrado
+ */
+async function getUserEmailFromDirectory(userId) {
+    try {
+        // Extrair apenas o número do ID
+        const userIdMatch = userId.match(/(\d+)/);
+        if (!userIdMatch) {
+            logger.warn(`ID de usuário inválido: ${userId}`);
+            return null;
+        }
+
+        const numericUserId = userIdMatch[1];
+        const auth = getAuthClient();
+        const admin = google.admin({ version: 'directory_v1', auth });
+
+        // Buscar usuário pelo ID
+        const response = await admin.users.get({
+            userKey: numericUserId
+        });
+
+        const email = response.data.primaryEmail;
+        logger.info(`Email encontrado para user ID ${numericUserId}: ${email}`);
+        return email;
+
+    } catch (error) {
+        logger.error(`Erro ao buscar email do usuário ${userId}:`, error.message);
+        return null;
+    }
+}
+
 module.exports = {
     getConferenceDetails,
     getGoogleDriveLink,
     getRecording,
     getTranscript,
-    getSmartNote
+    getSmartNote,
+    getUserEmailFromDirectory
 };
