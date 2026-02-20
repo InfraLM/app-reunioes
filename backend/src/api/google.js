@@ -75,33 +75,52 @@ function getGoogleDriveLink(fileId) {
 
 /**
  * Busca email do usuário usando Directory API
- * @param {string} userId - ID do usuário (formato: users/123456789 ou apenas 123456789)
+ * @param {string} subject - Subject do evento (formato: //cloudidentity.googleapis.com/users/123456789 ou users/123456789)
  * @returns {string|null} Email do usuário ou null se não encontrado
  */
-async function getUserEmailFromDirectory(userId) {
+async function getUserEmailFromDirectory(subject) {
     try {
-        // Extrair apenas o número do ID
-        const userIdMatch = userId.match(/(\d+)/);
+        // Extrair apenas o número do ID (suporta vários formatos)
+        // Formatos suportados:
+        // - //cloudidentity.googleapis.com/users/123456789
+        // - users/123456789
+        // - 123456789
+        const userIdMatch = subject.match(/users\/(\d+)|^(\d+)$/);
         if (!userIdMatch) {
-            logger.warn(`ID de usuário inválido: ${userId}`);
+            logger.warn(`ID de usuário inválido: ${subject}`);
             return null;
         }
 
-        const numericUserId = userIdMatch[1];
+        const numericUserId = userIdMatch[1] || userIdMatch[2];
+        logger.info(`Buscando email para user ID: ${numericUserId}`);
+
         const auth = getAuthClient();
         const admin = google.admin({ version: 'directory_v1', auth });
 
         // Buscar usuário pelo ID
         const response = await admin.users.get({
-            userKey: numericUserId
+            userKey: numericUserId,
+            projection: 'basic', // Retorna apenas campos básicos (mais rápido)
+            viewType: 'admin_view'
         });
 
         const email = response.data.primaryEmail;
-        logger.info(`Email encontrado para user ID ${numericUserId}: ${email}`);
+        logger.info(`✅ Email encontrado: ${email} (user ID: ${numericUserId})`);
         return email;
 
     } catch (error) {
-        logger.error(`Erro ao buscar email do usuário ${userId}:`, error.message);
+        logger.error(`❌ Erro ao buscar email do usuário ${subject}:`, {
+            message: error.message,
+            code: error.code,
+            status: error.status
+        });
+
+        // Se o erro for de permissão, logar detalhes adicionais
+        if (error.code === 403) {
+            logger.error('⚠️ Permissão negada! Verifique se o Service Account tem acesso ao Directory API');
+            logger.error('Scopes necessários: https://www.googleapis.com/auth/admin.directory.user.readonly');
+        }
+
         return null;
     }
 }
