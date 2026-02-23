@@ -246,14 +246,12 @@ async function processCompleteConferenceServerless(tracking) {
       }
     }
 
-    // Função auxiliar para extrair links
-    const getArtifactLink = (art) => {
+    // Função auxiliar para extrair links e copiar para pasta compartilhada
+    const getArtifactLinkAndCopyToSharedFolder = async (art, impersonatedEmail, sharedFolderId) => {
       if (!art) return null;
-      if (art.driveDestination && art.driveDestination.file) {
-        return getGoogleDriveLink(art.driveDestination.file);
-      }
-      if (art.docsDestination && art.docsDestination.document) {
-        return getGoogleDriveLink(art.docsDestination.document);
+      const fileId = art.driveDestination?.file?.id || art.docsDestination?.document?.id;
+      if (fileId) {
+          return await copyFileToSharedFolderAndGetLink(fileId, impersonatedEmail, sharedFolderId);
       }
       return null;
     };

@@ -2,6 +2,7 @@ const { google } = require("googleapis");
 const { ConferenceRecordsServiceClient } = require('@google-apps/meet').v2;
 const { getAuthClient, getAuthClientForUser } = require("../services/auth");
 const logger = require("../utils/logger");
+const config = require("../config");
 
 /**
  * Retorna o cliente especializado do Google Meet v2
@@ -14,8 +15,11 @@ function getMeetClient(impersonatedEmail) {
     });
 }
 
-function getDriveApiClient() {
-    const auth = getAuthClient();
+/**
+ * Retorna o cliente especializado do Google Drive v3 para um usuário personificado
+ */
+function getDriveApiClientForUser(impersonatedEmail) {
+    const auth = getAuthClientForUser(impersonatedEmail);
     return google.drive({ version: "v3", auth });
 }
 
@@ -71,6 +75,54 @@ async function getSmartNote(smartNoteName, impersonatedEmail) {
 
 function getGoogleDriveLink(fileId) {
     return `https://drive.google.com/file/d/${fileId}/view`;
+}
+
+/**
+ * Copies a Google Drive file to a shared folder and returns its web view link.
+ * Sets permissions for anyone with the link to view.
+ * @param {string} fileId The ID of the file to copy.
+ * @param {string} impersonatedEmail The email of the user to impersonate.
+ * @param {string} sharedFolderId The ID of the shared Google Drive folder.
+ * @returns {Promise<string|null>} The web view link of the copied file, or null if an error occurs.
+ */
+async function copyFileToSharedFolderAndGetLink(fileId, impersonatedEmail, sharedFolderId) {
+  if (!fileId || !impersonatedEmail || !sharedFolderId) {
+    logger.warn('Missing parameters for copyFileToSharedFolderAndGetLink', { fileId, impersonatedEmail, sharedFolderId });
+    return null;
+  }
+
+  try {
+    const drive = getDriveApiClientForUser(impersonatedEmail);
+
+    // 1. Copy the file to the shared folder
+    const copyResponse = await drive.files.copy({
+      fileId: fileId,
+      requestBody: {
+        parents: [sharedFolderId],
+      },
+      fields: 'id,webViewLink,name',
+      supportsAllDrives: true, // Required for Shared Drives
+    });
+
+    const copiedFile = copyResponse.data;
+    logger.info(`File ${fileId} copied to folder ${sharedFolderId}. New file ID: ${copiedFile.id}`);
+
+    // 2. Set permissions on the copied file to be publicly readable
+    await drive.permissions.create({
+      fileId: copiedFile.id,
+      requestBody: {
+        role: 'reader',
+        type: 'anyone',
+      },
+      supportsAllDrives: true, // Required for Shared Drives
+    });
+    logger.info(`Permissions set for copied file ${copiedFile.id}: anyone with link can view.`);
+
+    return copiedFile.webViewLink;
+  } catch (error) {
+    logger.error(`Error copying file ${fileId} to shared folder ${sharedFolderId}:`, error.response ? error.response.data : error);
+    return null;
+  }
 }
 
 /**
@@ -131,5 +183,6 @@ module.exports = {
     getRecording,
     getTranscript,
     getSmartNote,
-    getUserEmailFromDirectory
+    getUserEmailFromDirectory,
+    copyFileToSharedFolderAndGetLink,
 };
