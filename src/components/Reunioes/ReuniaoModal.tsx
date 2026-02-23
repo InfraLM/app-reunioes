@@ -55,10 +55,34 @@ function ArtifactLink({
     try {
       const response = await fetch(href);
       const blob = await response.blob();
+
+      // Tenta extrair o nome do arquivo do cabeçalho Content-Disposition
+      let fileName = downloadFileName || 'ata.pdf';
+      const contentDisposition = response.headers.get('Content-Disposition');
+      if (contentDisposition) {
+        const fileNameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+        if (fileNameMatch && fileNameMatch[1]) {
+          fileName = fileNameMatch[1].replace(/['"]/g, '');
+        }
+      }
+
+      // Se não extraiu do header, tenta extrair da URL
+      if (fileName === downloadFileName && href.includes('/')) {
+        const urlFileName = href.split('/').pop()?.split('?')[0];
+        if (urlFileName) {
+          fileName = decodeURIComponent(urlFileName);
+        }
+      }
+
+      // Garante que o arquivo termine com .pdf
+      if (!fileName.toLowerCase().endsWith('.pdf')) {
+        fileName = `${fileName}.pdf`;
+      }
+
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = downloadFileName || 'ata.pdf';
+      link.download = fileName;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
