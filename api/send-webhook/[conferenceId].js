@@ -3,11 +3,11 @@ import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
 
-const logger = require('../../backend/src/utils/logger'); //
-const prisma = require('../../lib/prisma.cjs'); //
-const { getConferenceDetails, getRecording, getTranscript, getSmartNote, copyFileToSharedFolderAndGetLink } = require('../../backend/src/api/google'); //
-const { sendWebhook } = require('../../backend/src/api/webhook'); //
-const config = require('../../backend/src/config'); //
+const logger = require('../../backend/src/utils/logger');
+const prisma = require('../../lib/prisma.cjs');
+const { getConferenceDetails, getGoogleDriveLink, getRecording, getTranscript, getSmartNote } = require('../../backend/src/api/google');
+const { sendWebhook } = require('../../backend/src/api/webhook');
+const config = require('../../backend/src/config');
 
 /**
  * POST /api/send-webhook/:conferenceId
@@ -74,16 +74,13 @@ export default async function handler(req, res) {
       data: { status: 'processing' }
     });
 
-    // O e-mail do organizador é usado para buscar os detalhes dos artefatos (getRecording, etc.)
-    const organizerEmailForApi = tracking.user_email || config.google.impersonatedUser;
-    // O e-mail de infra (configurado como impersonatedUser) é usado para a operação de cópia.
-    const infraEmailForCopy = config.google.impersonatedUser;
+    const impersonatedEmail = tracking.user_email || config.google.impersonatedUser;
     const organizerEmail = tracking.user_email || 'unknown@meet.google.com';
 
     // Buscar detalhes da conferência
     let conferenceDetails;
     try {
-      conferenceDetails = await getConferenceDetails(conferenceId, organizerEmailForApi);
+      conferenceDetails = await getConferenceDetails(conferenceId, impersonatedEmail);
     } catch (error) {
       logger.error(`Erro ao buscar detalhes da conferência: ${error.message}`);
       await prisma.conferenceArtifactTracking.update({
@@ -101,7 +98,7 @@ export default async function handler(req, res) {
 
     if (tracking.has_recording && tracking.recording_name) {
       try {
-        recording = await getRecording(tracking.recording_name, organizerEmailForApi);
+        recording = await getRecording(tracking.recording_name, impersonatedEmail);
         logger.info(`Gravação encontrada: ${tracking.recording_name}`);
       } catch (err) {
         logger.warn(`Não foi possível buscar gravação: ${err.message}`);
@@ -110,7 +107,7 @@ export default async function handler(req, res) {
 
     if (tracking.has_transcript && tracking.transcript_name) {
       try {
-        transcript = await getTranscript(tracking.transcript_name, organizerEmailForApi);
+        transcript = await getTranscript(tracking.transcript_name, impersonatedEmail);
         logger.info(`Transcrição encontrada: ${tracking.transcript_name}`);
       } catch (err) {
         logger.warn(`Não foi possível buscar transcrição: ${err.message}`);
@@ -119,7 +116,7 @@ export default async function handler(req, res) {
 
     if (tracking.has_smart_note && tracking.smart_note_name) {
       try {
-        smartNote = await getSmartNote(tracking.smart_note_name, organizerEmailForApi);
+        smartNote = await getSmartNote(tracking.smart_note_name, impersonatedEmail);
         logger.info(`Smart Note encontrada: ${tracking.smart_note_name}`);
       } catch (err) {
         logger.warn(`Não foi possível buscar anotações: ${err.message}`);
@@ -127,11 +124,13 @@ export default async function handler(req, res) {
     }
 
     // Função auxiliar para extrair links
-    const getArtifactLinkAndCopyToSharedFolder = async (art, copyUserEmail, sharedFolderId) => {
+    const getArtifactLink = (art) => {
       if (!art) return null;
-      const fileId = art.driveDestination?.file?.id || art.docsDestination?.document?.id;
-      if (fileId) {
-        return await copyFileToSharedFolderAndGetLink(fileId, copyUserEmail, sharedFolderId);
+      if (art.driveDestination && art.driveDestination.file) {
+        return getGoogleDriveLink(art.driveDestination.file);
+      }
+      if (art.docsDestination && art.docsDestination.document) {
+        return getGoogleDriveLink(art.docsDestination.document);
       }
       return null;
     };
@@ -140,11 +139,11 @@ export default async function handler(req, res) {
     const payload = {
       conference_id: conferenceId,
       meeting_title: conferenceDetails.space?.displayName || "Reunião do Google Meet",
-      start_time: conferenceDetails.startTime, //
-      end_time: conferenceDetails.endTime, //
-      recording_url: await getArtifactLinkAndCopyToSharedFolder(recording, infraEmailForCopy, config.google.sharedDriveFolderId),
-      transcript_url: await getArtifactLinkAndCopyToSharedFolder(transcript, infraEmailForCopy, config.google.sharedDriveFolderId),
-      smart_notes_url: await getArtifactLinkAndCopyToSharedFolder(smartNote, infraEmailForCopy, config.google.sharedDriveFolderId),
+      start_time: conferenceDetails.startTime,
+      end_time: conferenceDetails.endTime,
+      recording_url: getArtifactLink(recording),
+      transcript_url: getArtifactLink(transcript),
+      smart_notes_url: getArtifactLink(smartNote),
       account_email: organizerEmail,
       manual_trigger: true, // Indica que foi acionado manualmente
       partial: !(tracking.has_recording && tracking.has_transcript && tracking.has_smart_note),

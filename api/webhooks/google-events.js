@@ -5,8 +5,8 @@ const require = createRequire(import.meta.url);
 
 // Importar módulos CommonJS
 const logger = require('../../backend/src/utils/logger');
-const prisma = require('../../lib/prisma.cjs'); //
-const { getConferenceDetails, getRecording, getTranscript, getSmartNote, getUserEmailFromDirectory, copyFileToSharedFolderAndGetLink } = require('../../backend/src/api/google'); //
+const prisma = require('../../lib/prisma.cjs');
+const { getConferenceDetails, getGoogleDriveLink, getRecording, getTranscript, getSmartNote, getUserEmailFromDirectory } = require('../../backend/src/api/google');
 const { sendWebhook } = require('../../backend/src/api/webhook');
 const { getUserEmail } = require('../../backend/src/services/userRegistry');
 
@@ -191,11 +191,8 @@ async function processCompleteConferenceServerless(tracking) {
       data: { status: 'processing' }
     });
 
-    // O e-mail do organizador é usado para buscar os detalhes dos artefatos (getRecording, etc.)
-    // pois ele é o dono original dos recursos.
-    const organizerEmailForApi = tracking.user_email || config.google.impersonatedUser;
-    // O e-mail de infra (configurado como impersonatedUser) é usado para a operação de cópia.
-    const infraEmailForCopy = config.google.impersonatedUser;
+    // Usar email do tracking ou fallback para impersonatedUser
+    const impersonatedEmail = tracking.user_email || config.google.impersonatedUser;
     const organizerEmail = tracking.user_email;
 
     // Validar se usuário está na lista de monitorados
@@ -220,14 +217,14 @@ async function processCompleteConferenceServerless(tracking) {
     logger.info(`Processando conferência ${tracking.conference_id} (email: ${organizerEmail})`);
 
     // Buscar detalhes da conferência
-    const conferenceDetails = await getConferenceDetails(tracking.conference_id, organizerEmailForApi);
+    const conferenceDetails = await getConferenceDetails(tracking.conference_id, impersonatedEmail);
 
     // Buscar artefatos
     let recording, transcript, smartNote;
 
     if (tracking.has_recording && tracking.recording_name) {
       try {
-        recording = await getRecording(tracking.recording_name, organizerEmailForApi);
+        recording = await getRecording(tracking.recording_name, impersonatedEmail);
       } catch (err) {
         logger.error(`Erro ao buscar gravação: ${err.message}`);
       }
@@ -235,7 +232,7 @@ async function processCompleteConferenceServerless(tracking) {
 
     if (tracking.has_transcript && tracking.transcript_name) {
       try {
-        transcript = await getTranscript(tracking.transcript_name, organizerEmailForApi);
+        transcript = await getTranscript(tracking.transcript_name, impersonatedEmail);
       } catch (err) {
         logger.error(`Erro ao buscar transcrição: ${err.message}`);
       }
@@ -243,18 +240,20 @@ async function processCompleteConferenceServerless(tracking) {
 
     if (tracking.has_smart_note && tracking.smart_note_name) {
       try {
-        smartNote = await getSmartNote(tracking.smart_note_name, organizerEmailForApi);
+        smartNote = await getSmartNote(tracking.smart_note_name, impersonatedEmail);
       } catch (err) {
         logger.error(`Erro ao buscar anotações: ${err.message}`);
       }
     }
 
-    // Função auxiliar para extrair links e copiar para pasta compartilhada
-    const getArtifactLinkAndCopyToSharedFolder = async (art, copyUserEmail, sharedFolderId) => {
+    // Função auxiliar para extrair links
+    const getArtifactLink = (art) => {
       if (!art) return null;
-      const fileId = art.driveDestination?.file?.id || art.docsDestination?.document?.id;
-      if (fileId) {
-          return await copyFileToSharedFolderAndGetLink(fileId, copyUserEmail, sharedFolderId);
+      if (art.driveDestination && art.driveDestination.file) {
+        return getGoogleDriveLink(art.driveDestination.file);
+      }
+      if (art.docsDestination && art.docsDestination.document) {
+        return getGoogleDriveLink(art.docsDestination.document);
       }
       return null;
     };
@@ -263,11 +262,11 @@ async function processCompleteConferenceServerless(tracking) {
     const payload = {
       conference_id: tracking.conference_id,
       meeting_title: conferenceDetails.space?.displayName || "Reunião do Google Meet",
-            start_time: conferenceDetails.startTime, //
-            end_time: conferenceDetails.endTime, //
-            recording_url: await getArtifactLinkAndCopyToSharedFolder(recording, infraEmailForCopy, config.google.sharedDriveFolderId),
-            transcript_url: await getArtifactLinkAndCopyToSharedFolder(transcript, infraEmailForCopy, config.google.sharedDriveFolderId),
-            smart_notes_url: await getArtifactLinkAndCopyToSharedFolder(smartNote, infraEmailForCopy, config.google.sharedDriveFolderId),
+      start_time: conferenceDetails.startTime,
+      end_time: conferenceDetails.endTime,
+      recording_url: getArtifactLink(recording),
+      transcript_url: getArtifactLink(transcript),
+      smart_notes_url: getArtifactLink(smartNote),
       account_email: organizerEmail,
     };
 
@@ -277,19 +276,8 @@ async function processCompleteConferenceServerless(tracking) {
 
     // Salvar reunião no banco de dados
     try {
-      await prisma.eppReunioesGovernanca.upsert({
-        where: { conference_id: tracking.conference_id },
-        update: {
-          titulo_reuniao: payload.meeting_title,
-          data_reuniao: payload.start_time ? new Date(payload.start_time) : null,
-          hora_inicio: payload.start_time || null,
-          hora_fim: payload.end_time || null,
-          responsavel: payload.account_email,
-          link_gravacao: payload.recording_url,
-          link_transcricao: payload.transcript_url,
-          link_anotacao: payload.smart_notes_url,
-        },
-        create: {
+      await prisma.eppReunioesGovernanca.create({
+        data: {
           conference_id: tracking.conference_id,
           titulo_reuniao: payload.meeting_title,
           data_reuniao: payload.start_time ? new Date(payload.start_time) : null,
@@ -301,7 +289,7 @@ async function processCompleteConferenceServerless(tracking) {
           link_anotacao: payload.smart_notes_url,
         }
       });
-      logger.info(`Reunião ${tracking.conference_id} salva/atualizada no banco de dados.`);
+      logger.info(`Reunião ${tracking.conference_id} salva no banco de dados.`);
     } catch (dbError) {
       logger.error(`Erro ao salvar no banco: ${dbError.message}`);
     }
