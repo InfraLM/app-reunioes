@@ -3,11 +3,11 @@ import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
 
-const logger = require('../../backend/src/utils/logger');
-const prisma = require('../../lib/prisma.cjs');
-const { getConferenceDetails, getGoogleDriveLink, getRecording, getTranscript, getSmartNote } = require('../../backend/src/api/google');
-const { sendWebhook } = require('../../backend/src/api/webhook');
-const config = require('../../backend/src/config');
+const logger = require('../../backend/src/utils/logger'); //
+const prisma = require('../../lib/prisma.cjs'); //
+const { getConferenceDetails, getRecording, getTranscript, getSmartNote, copyFileToSharedFolderAndGetLink } = require('../../backend/src/api/google'); //
+const { sendWebhook } = require('../../backend/src/api/webhook'); //
+const config = require('../../backend/src/config'); //
 
 /**
  * Endpoint para processar conferências que excederam o timeout
@@ -158,13 +158,13 @@ async function processTimedOutConference(tracking) {
     }
 
     // Função auxiliar para extrair links
-    const getArtifactLink = (art) => {
+    const getArtifactLinkAndCopyToSharedFolder = async (art, impersonatedEmail, sharedFolderId) => {
       if (!art) return null;
       if (art.driveDestination && art.driveDestination.file) {
-        return getGoogleDriveLink(art.driveDestination.file);
+        return await copyFileToSharedFolderAndGetLink(art.driveDestination.file.id, impersonatedEmail, sharedFolderId);
       }
       if (art.docsDestination && art.docsDestination.document) {
-        return getGoogleDriveLink(art.docsDestination.document);
+        return await copyFileToSharedFolderAndGetLink(art.docsDestination.document.id, impersonatedEmail, sharedFolderId);
       }
       return null;
     };
@@ -173,11 +173,11 @@ async function processTimedOutConference(tracking) {
     const payload = {
       conference_id: tracking.conference_id,
       meeting_title: conferenceDetails.space?.displayName || "Reunião do Google Meet",
-      start_time: conferenceDetails.startTime,
-      end_time: conferenceDetails.endTime,
-      recording_url: getArtifactLink(recording),
-      transcript_url: getArtifactLink(transcript),
-      smart_notes_url: getArtifactLink(smartNote),
+      start_time: conferenceDetails.startTime, //
+      end_time: conferenceDetails.endTime, //
+      recording_url: await getArtifactLinkAndCopyToSharedFolder(recording, impersonatedEmail, config.google.sharedDriveFolderId),
+      transcript_url: await getArtifactLinkAndCopyToSharedFolder(transcript, impersonatedEmail, config.google.sharedDriveFolderId),
+      smart_notes_url: await getArtifactLinkAndCopyToSharedFolder(smartNote, impersonatedEmail, config.google.sharedDriveFolderId),
       account_email: organizerEmail,
       partial: true, // Indica que é um processamento parcial
       missing_artifacts: []

@@ -5,8 +5,8 @@ const require = createRequire(import.meta.url);
 
 // Importar módulos CommonJS
 const logger = require('../../backend/src/utils/logger');
-const prisma = require('../../lib/prisma.cjs');
-const { getConferenceDetails, getGoogleDriveLink, getRecording, getTranscript, getSmartNote, getUserEmailFromDirectory } = require('../../backend/src/api/google');
+const prisma = require('../../lib/prisma.cjs'); //
+const { getConferenceDetails, getRecording, getTranscript, getSmartNote, getUserEmailFromDirectory, copyFileToSharedFolderAndGetLink } = require('../../backend/src/api/google'); //
 const { sendWebhook } = require('../../backend/src/api/webhook');
 const { getUserEmail } = require('../../backend/src/services/userRegistry');
 
@@ -262,11 +262,11 @@ async function processCompleteConferenceServerless(tracking) {
     const payload = {
       conference_id: tracking.conference_id,
       meeting_title: conferenceDetails.space?.displayName || "Reunião do Google Meet",
-      start_time: conferenceDetails.startTime,
-      end_time: conferenceDetails.endTime,
-      recording_url: getArtifactLink(recording),
-      transcript_url: getArtifactLink(transcript),
-      smart_notes_url: getArtifactLink(smartNote),
+            start_time: conferenceDetails.startTime, //
+            end_time: conferenceDetails.endTime, //
+            recording_url: await getArtifactLinkAndCopyToSharedFolder(recording, impersonatedEmail, config.google.sharedDriveFolderId),
+            transcript_url: await getArtifactLinkAndCopyToSharedFolder(transcript, impersonatedEmail, config.google.sharedDriveFolderId),
+            smart_notes_url: await getArtifactLinkAndCopyToSharedFolder(smartNote, impersonatedEmail, config.google.sharedDriveFolderId),
       account_email: organizerEmail,
     };
 

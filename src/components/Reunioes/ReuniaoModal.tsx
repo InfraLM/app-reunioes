@@ -41,11 +41,60 @@ function ArtifactLink({
   href,
   label,
   color,
+  isDownload = false,
+  downloadFileName,
 }: {
   href: string;
   label: string;
   color: string;
+  isDownload?: boolean;
+  downloadFileName?: string;
 }) {
+  const handleDownload = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    try {
+      const response = await fetch(href);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = downloadFileName || 'ata.pdf';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Erro ao baixar o arquivo:', error);
+      // Fallback: abre em nova aba se o download falhar
+      window.open(href, '_blank');
+    }
+  };
+
+  if (isDownload) {
+    return (
+      <button
+        onClick={handleDownload}
+        className={`inline-flex items-center gap-2.5 px-5 py-2.5 rounded-xl text-sm font-semibold border transition-all duration-150 whitespace-nowrap cursor-pointer hover:opacity-80 active:scale-[0.97] ${color}`}
+      >
+        {label}
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+          <polyline points="7 10 12 15 17 10" />
+          <line x1="12" y1="15" x2="12" y2="3" />
+        </svg>
+      </button>
+    );
+  }
+
   return (
     <a
       href={href}
@@ -86,6 +135,17 @@ export default function ReuniaoModal({ reuniao, onClose }: Props) {
   const deliberacoes = parseArray(reuniao.deliberacoes_titulos);
   const acoes = parseArray(reuniao.acoes_lista);
   const responsaveis = parseArray(reuniao.acoes_responsaveis);
+
+  // Cria um nome de arquivo baseado no título da reunião e data
+  const getAtaFileName = () => {
+    const titulo = reuniao.titulo_reuniao
+      ? reuniao.titulo_reuniao.replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, '_').substring(0, 50)
+      : 'reuniao';
+    const data = reuniao.data_reuniao
+      ? reuniao.data_reuniao.split('T')[0]
+      : '';
+    return `ata_${titulo}${data ? `_${data}` : ''}.pdf`;
+  };
 
   return (
     <div
@@ -195,7 +255,7 @@ export default function ReuniaoModal({ reuniao, onClose }: Props) {
                 <ArtifactLink href={reuniao.link_anotacao} label="Anotações"   color="text-purple-400 bg-purple-950/60 border-purple-800 hover:bg-purple-900/50" />
               )}
               {reuniao.ata_link_download && (
-                <ArtifactLink href={reuniao.ata_link_download} label="Ata"      color="text-yellow-400 bg-yellow-950/60 border-yellow-800 hover:bg-yellow-900/50" />
+                <ArtifactLink href={reuniao.ata_link_download} label="Ata"      color="text-yellow-400 bg-yellow-950/60 border-yellow-800 hover:bg-yellow-900/50" isDownload downloadFileName={getAtaFileName()} />
               )}
               {!reuniao.link_gravacao &&
                 !reuniao.link_transcricao &&
