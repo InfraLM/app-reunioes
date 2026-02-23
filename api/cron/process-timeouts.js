@@ -91,8 +91,11 @@ async function processTimedOutConference(tracking) {
       data: { status: 'processing' }
     });
 
-    // Usar email do tracking ou fallback para impersonatedUser
-    const impersonatedEmail = tracking.user_email || config.google.impersonatedUser;
+    // O e-mail do organizador é usado para buscar os detalhes dos artefatos (getRecording, etc.)
+    // pois ele é o dono original dos recursos.
+    const organizerEmailForApi = tracking.user_email;
+    // O e-mail de infra (configurado como impersonatedUser) é usado para a operação de cópia.
+    const infraEmailForCopy = config.google.impersonatedUser;
     const organizerEmail = tracking.user_email;
 
     // Validar se usuário está na lista de monitorados
@@ -119,7 +122,7 @@ async function processTimedOutConference(tracking) {
     // Buscar detalhes da conferência
     let conferenceDetails;
     try {
-      conferenceDetails = await getConferenceDetails(tracking.conference_id, impersonatedEmail);
+      conferenceDetails = await getConferenceDetails(tracking.conference_id, organizerEmailForApi);
     } catch (error) {
       logger.error(`Erro ao buscar detalhes da conferência: ${error.message}`);
       // Se não conseguir buscar detalhes, marca como erro e continua
@@ -135,7 +138,7 @@ async function processTimedOutConference(tracking) {
 
     if (tracking.has_recording && tracking.recording_name) {
       try {
-        recording = await getRecording(tracking.recording_name, impersonatedEmail);
+        recording = await getRecording(tracking.recording_name, organizerEmailForApi);
       } catch (err) {
         logger.warn(`Não foi possível buscar gravação: ${err.message}`);
       }
@@ -143,7 +146,7 @@ async function processTimedOutConference(tracking) {
 
     if (tracking.has_transcript && tracking.transcript_name) {
       try {
-        transcript = await getTranscript(tracking.transcript_name, impersonatedEmail);
+        transcript = await getTranscript(tracking.transcript_name, organizerEmailForApi);
       } catch (err) {
         logger.warn(`Não foi possível buscar transcrição: ${err.message}`);
       }
@@ -151,20 +154,18 @@ async function processTimedOutConference(tracking) {
 
     if (tracking.has_smart_note && tracking.smart_note_name) {
       try {
-        smartNote = await getSmartNote(tracking.smart_note_name, impersonatedEmail);
+        smartNote = await getSmartNote(tracking.smart_note_name, organizerEmailForApi);
       } catch (err) {
         logger.warn(`Não foi possível buscar anotações: ${err.message}`);
       }
     }
 
     // Função auxiliar para extrair links
-    const getArtifactLinkAndCopyToSharedFolder = async (art, impersonatedEmail, sharedFolderId) => {
+    const getArtifactLinkAndCopyToSharedFolder = async (art, copyUserEmail, sharedFolderId) => {
       if (!art) return null;
-      if (art.driveDestination && art.driveDestination.file) {
-        return await copyFileToSharedFolderAndGetLink(art.driveDestination.file.id, impersonatedEmail, sharedFolderId);
-      }
-      if (art.docsDestination && art.docsDestination.document) {
-        return await copyFileToSharedFolderAndGetLink(art.docsDestination.document.id, impersonatedEmail, sharedFolderId);
+      const fileId = art.driveDestination?.file?.id || art.docsDestination?.document?.id;
+      if (fileId) {
+        return await copyFileToSharedFolderAndGetLink(fileId, copyUserEmail, sharedFolderId);
       }
       return null;
     };
@@ -175,9 +176,9 @@ async function processTimedOutConference(tracking) {
       meeting_title: conferenceDetails.space?.displayName || "Reunião do Google Meet",
       start_time: conferenceDetails.startTime, //
       end_time: conferenceDetails.endTime, //
-      recording_url: await getArtifactLinkAndCopyToSharedFolder(recording, impersonatedEmail, config.google.sharedDriveFolderId),
-      transcript_url: await getArtifactLinkAndCopyToSharedFolder(transcript, impersonatedEmail, config.google.sharedDriveFolderId),
-      smart_notes_url: await getArtifactLinkAndCopyToSharedFolder(smartNote, impersonatedEmail, config.google.sharedDriveFolderId),
+      recording_url: await getArtifactLinkAndCopyToSharedFolder(recording, infraEmailForCopy, config.google.sharedDriveFolderId),
+      transcript_url: await getArtifactLinkAndCopyToSharedFolder(transcript, infraEmailForCopy, config.google.sharedDriveFolderId),
+      smart_notes_url: await getArtifactLinkAndCopyToSharedFolder(smartNote, infraEmailForCopy, config.google.sharedDriveFolderId),
       account_email: organizerEmail,
       partial: true, // Indica que é um processamento parcial
       missing_artifacts: []

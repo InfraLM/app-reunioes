@@ -121,6 +121,10 @@ async function copyFileToSharedFolderAndGetLink(fileId, impersonatedEmail, share
     return copiedFile.webViewLink;
   } catch (error) {
     logger.error(`Error copying file ${fileId} to shared folder ${sharedFolderId}:`, error.response ? error.response.data : error);
+    // Adiciona log específico para erros de permissão
+    if (error.code === 403 || error.code === 404) {
+        logger.error(`[Dica de Debug] Este erro pode ser causado por falta de permissão. Verifique se o usuário personificado ('${impersonatedEmail}') tem acesso de 'Editor' na pasta de destino '${sharedFolderId}'.`);
+    }
     return null;
   }
 }
