@@ -26,7 +26,7 @@ const subscription = pubsub.subscription(config.pubsub.subscriptionName);
 // Estrutura: { conferenceId: { startTime, timeoutTime, artifacts: { recording: bool, transcript: bool, smartNote: bool }, status: string, logs: [] } }
 const conferencesStatus = {};
 
-const TIMEOUT_MS = 30 * 60 * 1000; // 30 minutos
+const TIMEOUT_MS = 100 * 60 * 1000; // 100 minutos
 
 function getConferenceStatus() {
     // Retorna uma cópia segura do estado para o frontend
@@ -206,13 +206,13 @@ async function processCompleteConference(conferenceId) {
         // Função auxiliar interna para extrair link de Drive ou Docs
         const getArtifactLink = (art) => {
             if (!art) return null;
-            // Para Gravações (driveDestination)
-            if (art.driveDestination && art.driveDestination.file) {
-                return getGoogleDriveLink(art.driveDestination.file);
+            // Para Gravações (driveDestination) — exportUri é a URL permanente
+            if (art.driveDestination && art.driveDestination.exportUri) {
+                return art.driveDestination.exportUri;
             }
-            // Para Transcrições e Notas (docsDestination)
-            if (art.docsDestination && art.docsDestination.document) {
-                return getGoogleDriveLink(art.docsDestination.document);
+            // Para Transcrições e Notas (docsDestination) — exportUri é a URL permanente
+            if (art.docsDestination && art.docsDestination.exportUri) {
+                return art.docsDestination.exportUri;
             }
             return null;
         };
