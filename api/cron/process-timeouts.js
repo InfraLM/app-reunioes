@@ -193,10 +193,21 @@ async function processTimedOutConference(tracking) {
       await sendWebhook(payload);
       logger.info(`Webhook enviado (parcial) para ${tracking.conference_id}`);
 
-      // Salvar reunião no banco de dados
+      // Salvar/Atualizar reunião no banco de dados usando upsert para evitar erros de duplicidade
       try {
-        await prisma.eppReunioesGovernanca.create({
-          data: {
+        await prisma.eppReunioesGovernanca.upsert({
+          where: { conference_id: tracking.conference_id },
+          update: {
+            titulo_reuniao: payload.meeting_title,
+            data_reuniao: payload.start_time ? new Date(payload.start_time) : null,
+            hora_inicio: payload.start_time || null,
+            hora_fim: payload.end_time || null,
+            responsavel: payload.account_email,
+            link_gravacao: payload.recording_url,
+            link_transcricao: payload.transcript_url,
+            link_anotacao: payload.smart_notes_url,
+          },
+          create: {
             conference_id: tracking.conference_id,
             titulo_reuniao: payload.meeting_title,
             data_reuniao: payload.start_time ? new Date(payload.start_time) : null,
@@ -208,9 +219,8 @@ async function processTimedOutConference(tracking) {
             link_anotacao: payload.smart_notes_url,
           }
         });
-        logger.info(`Reunião ${tracking.conference_id} salva no banco (parcial).`);
+        logger.info(`Reunião ${tracking.conference_id} salva/atualizada no banco (parcial).`);
       } catch (dbError) {
-        // Pode ser duplicate key se já foi processada
         logger.error(`Erro ao salvar no banco: ${dbError.message}`);
       }
 
