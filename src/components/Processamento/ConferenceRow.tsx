@@ -3,7 +3,6 @@ import type { ConferenceStatus } from '../../types';
 
 interface Props {
   conference: ConferenceStatus;
-  onRefresh: () => void;
   removeAt?: number;
 }
 
@@ -24,7 +23,7 @@ function ArtifactDot({ done, label }: { done: boolean; label: string }) {
   );
 }
 
-export default function ConferenceRow({ conference, onRefresh, removeAt }: Props) {
+export default function ConferenceRow({ conference, removeAt }: Props) {
   const [timeLeft, setTimeLeft] = useState('--:--');
   const [removeIn, setRemoveIn] = useState<string | null>(null);
 

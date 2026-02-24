@@ -101,7 +101,7 @@ export default function ProcessamentoPage() {
             Monitoramento de Reuniões
           </h1>
           <p className="text-zinc-500 text-sm mt-2 font-normal">
-            Timeout automático em 30 minutos por conferência
+            Timeout automático em 100 minutos por conferência
           </p>
         </div>
 
@@ -181,7 +181,6 @@ export default function ProcessamentoPage() {
                 <ConferenceRow
                   key={conf.id}
                   conference={conf}
-                  onRefresh={fetchStatus}
                   removeAt={getRemoveAt(conf)}
                 />
               ))}

@@ -12,7 +12,7 @@ const { getUserEmail } = require('../../backend/src/services/userRegistry');
 
 // Configuração
 const config = require('../../backend/src/config');
-const TIMEOUT_MS = 30 * 60 * 1000; // 30 minutos
+const TIMEOUT_MS = 100 * 60 * 1000; // 100 minutos
 
 /**
  * Endpoint para receber notificações Push do Google Pub/Sub.
