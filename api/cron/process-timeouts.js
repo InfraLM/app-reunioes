@@ -5,7 +5,7 @@ const require = createRequire(import.meta.url);
 
 const logger = require('../../backend/src/utils/logger');
 const prisma = require('../../lib/prisma.cjs');
-const { getConferenceDetails, getGoogleDriveLink, getRecording, getTranscript, getSmartNote } = require('../../backend/src/api/google');
+const { getConferenceDetails, getRecording, getTranscript, getSmartNote } = require('../../backend/src/api/google');
 const { sendWebhook } = require('../../backend/src/api/webhook');
 const config = require('../../backend/src/config');
 
@@ -160,11 +160,13 @@ async function processTimedOutConference(tracking) {
     // Função auxiliar para extrair links
     const getArtifactLink = (art) => {
       if (!art) return null;
-      if (art.driveDestination && art.driveDestination.file) {
-        return getGoogleDriveLink(art.driveDestination.file);
+      // Para Gravações (driveDestination) — exportUri é a URL permanente
+      if (art.driveDestination && art.driveDestination.exportUri) {
+        return art.driveDestination.exportUri;
       }
-      if (art.docsDestination && art.docsDestination.document) {
-        return getGoogleDriveLink(art.docsDestination.document);
+      // Para Transcrições e Notas (docsDestination) — exportUri é a URL permanente
+      if (art.docsDestination && art.docsDestination.exportUri) {
+        return art.docsDestination.exportUri;
       }
       return null;
     };
