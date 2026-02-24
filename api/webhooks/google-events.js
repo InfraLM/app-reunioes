@@ -57,6 +57,17 @@ export default async function handler(req, res) {
     if (eventData.transcript && eventData.transcript.name) resourceName = eventData.transcript.name;
     if (eventData.smartNote && eventData.smartNote.name) resourceName = eventData.smartNote.name;
 
+    // Extrair URLs diretamente do payload do Pub/Sub (Google inclui exportUri no evento)
+    const recordingUrlFromEvent = eventData.recording?.driveDestination?.exportUri || null;
+    const transcriptUrlFromEvent = eventData.transcript?.docsDestination?.exportUri || null;
+    const smartNoteUrlFromEvent = eventData.smartNote?.docsDestination?.exportUri || null;
+
+    logger.info("URLs extraídas do evento Pub/Sub", {
+      recordingUrl: recordingUrlFromEvent,
+      transcriptUrl: transcriptUrlFromEvent,
+      smartNoteUrl: smartNoteUrlFromEvent
+    });
+
     // Tenta extrair Conference ID
     const conferenceMatch = resourceName ? resourceName.match(/conferenceRecords\/([^\/]+)/) : null;
     const conferenceId = conferenceMatch ? `conferenceRecords/${conferenceMatch[1]}` : null;
@@ -85,7 +96,10 @@ export default async function handler(req, res) {
     }
 
     // 6. Processar evento e atualizar estado no banco de dados
-    await processEventServerless(conferenceId, eventType, resourceName, userEmail, eventData);
+    await processEventServerless(
+      conferenceId, eventType, resourceName, userEmail, eventData,
+      recordingUrlFromEvent, transcriptUrlFromEvent, smartNoteUrlFromEvent
+    );
 
     // 7. Enviar resposta de sucesso
     return res.status(200).send('Webhook processado com sucesso.');
@@ -100,7 +114,10 @@ export default async function handler(req, res) {
  * Processa um evento do Pub/Sub em ambiente serverless
  * Usa o banco de dados para manter estado entre requisições
  */
-async function processEventServerless(conferenceId, eventType, resourceName, userEmail, eventData) {
+async function processEventServerless(
+  conferenceId, eventType, resourceName, userEmail, eventData,
+  recordingUrlFromEvent, transcriptUrlFromEvent, smartNoteUrlFromEvent
+) {
   try {
     // Buscar ou criar registro de rastreamento
     let tracking = await prisma.conferenceArtifactTracking.findUnique({
@@ -123,6 +140,9 @@ async function processEventServerless(conferenceId, eventType, resourceName, use
           recording_name: eventType && eventType.includes("recording") ? resourceName : null,
           transcript_name: eventType && eventType.includes("transcript") ? resourceName : null,
           smart_note_name: eventType && eventType.includes("smartNote") ? resourceName : null,
+          recording_url: recordingUrlFromEvent,
+          transcript_url: transcriptUrlFromEvent,
+          smart_note_url: smartNoteUrlFromEvent,
         }
       });
       logger.info(`Novo rastreamento criado para conferência: ${conferenceId}`);
@@ -139,14 +159,23 @@ async function processEventServerless(conferenceId, eventType, resourceName, use
       if (eventType && eventType.includes("recording")) {
         updateData.has_recording = true;
         updateData.recording_name = resourceName;
+        if (recordingUrlFromEvent) updateData.recording_url = recordingUrlFromEvent;
       }
       if (eventType && eventType.includes("transcript")) {
         updateData.has_transcript = true;
         updateData.transcript_name = resourceName;
+        if (transcriptUrlFromEvent) updateData.transcript_url = transcriptUrlFromEvent;
       }
       if (eventType && eventType.includes("smartNote")) {
         updateData.has_smart_note = true;
         updateData.smart_note_name = resourceName;
+        if (smartNoteUrlFromEvent) updateData.smart_note_url = smartNoteUrlFromEvent;
+      }
+
+      // Se estava em erro e chegou novo evento com artefato, resetar para waiting
+      if (tracking.status === 'error') {
+        updateData.status = 'waiting';
+        logger.info(`Conferência ${conferenceId} resetada de 'error' para 'waiting' por novo evento`);
       }
 
       tracking = await prisma.conferenceArtifactTracking.update({
@@ -216,37 +245,15 @@ async function processCompleteConferenceServerless(tracking) {
 
     logger.info(`Processando conferência ${tracking.conference_id} (email: ${organizerEmail})`);
 
-    // Buscar detalhes da conferência
-    const conferenceDetails = await getConferenceDetails(tracking.conference_id, impersonatedEmail);
-
-    // Buscar artefatos
-    let recording, transcript, smartNote;
-
-    if (tracking.has_recording && tracking.recording_name) {
-      try {
-        recording = await getRecording(tracking.recording_name, impersonatedEmail);
-      } catch (err) {
-        logger.error(`Erro ao buscar gravação: ${err.message}`);
-      }
+    // Buscar detalhes da conferência (não-fatal: usa fallback se falhar)
+    let conferenceDetails = null;
+    try {
+      conferenceDetails = await getConferenceDetails(tracking.conference_id, impersonatedEmail);
+    } catch (error) {
+      logger.warn(`Não foi possível buscar detalhes da conferência ${tracking.conference_id}: ${error.message}. Continuando com fallback.`);
     }
 
-    if (tracking.has_transcript && tracking.transcript_name) {
-      try {
-        transcript = await getTranscript(tracking.transcript_name, impersonatedEmail);
-      } catch (err) {
-        logger.error(`Erro ao buscar transcrição: ${err.message}`);
-      }
-    }
-
-    if (tracking.has_smart_note && tracking.smart_note_name) {
-      try {
-        smartNote = await getSmartNote(tracking.smart_note_name, impersonatedEmail);
-      } catch (err) {
-        logger.error(`Erro ao buscar anotações: ${err.message}`);
-      }
-    }
-
-    // Função auxiliar para extrair links
+    // Função auxiliar para extrair links do objeto de artefato
     const getArtifactLink = (art) => {
       if (!art) return null;
       // Para Gravações (driveDestination) — exportUri é a URL permanente
@@ -260,17 +267,64 @@ async function processCompleteConferenceServerless(tracking) {
       return null;
     };
 
+    // Buscar artefatos: usar URL já armazenada (do evento Pub/Sub) ou tentar via API
+    let recordingUrl = tracking.recording_url || null;
+    let transcriptUrl = tracking.transcript_url || null;
+    let smartNoteUrl = tracking.smart_note_url || null;
+
+    if (!recordingUrl && tracking.has_recording && tracking.recording_name) {
+      try {
+        const recording = await getRecording(tracking.recording_name, impersonatedEmail);
+        recordingUrl = getArtifactLink(recording);
+        logger.info(`URL de gravação obtida via API: ${recordingUrl}`);
+      } catch (err) {
+        logger.error(`Erro ao buscar gravação: ${err.message}`);
+      }
+    } else if (recordingUrl) {
+      logger.info(`Usando URL de gravação do evento Pub/Sub: ${recordingUrl}`);
+    }
+
+    if (!transcriptUrl && tracking.has_transcript && tracking.transcript_name) {
+      try {
+        const transcript = await getTranscript(tracking.transcript_name, impersonatedEmail);
+        transcriptUrl = getArtifactLink(transcript);
+        logger.info(`URL de transcrição obtida via API: ${transcriptUrl}`);
+      } catch (err) {
+        logger.error(`Erro ao buscar transcrição: ${err.message}`);
+      }
+    } else if (transcriptUrl) {
+      logger.info(`Usando URL de transcrição do evento Pub/Sub: ${transcriptUrl}`);
+    }
+
+    if (!smartNoteUrl && tracking.has_smart_note && tracking.smart_note_name) {
+      try {
+        const smartNote = await getSmartNote(tracking.smart_note_name, impersonatedEmail);
+        smartNoteUrl = getArtifactLink(smartNote);
+        logger.info(`URL de smart note obtida via API: ${smartNoteUrl}`);
+      } catch (err) {
+        logger.error(`Erro ao buscar anotações: ${err.message}`);
+      }
+    } else if (smartNoteUrl) {
+      logger.info(`Usando URL de smart note do evento Pub/Sub: ${smartNoteUrl}`);
+    }
+
     // Preparar payload
     const payload = {
       conference_id: tracking.conference_id,
-      meeting_title: conferenceDetails.space?.displayName || "Reunião do Google Meet",
-      start_time: conferenceDetails.startTime,
-      end_time: conferenceDetails.endTime,
-      recording_url: getArtifactLink(recording),
-      transcript_url: getArtifactLink(transcript),
-      smart_notes_url: getArtifactLink(smartNote),
+      meeting_title: conferenceDetails?.space?.displayName || "Reunião do Google Meet",
+      start_time: conferenceDetails?.startTime || null,
+      end_time: conferenceDetails?.endTime || null,
+      recording_url: recordingUrl,
+      transcript_url: transcriptUrl,
+      smart_notes_url: smartNoteUrl,
       account_email: organizerEmail,
     };
+
+    logger.info(`Payload do webhook para ${tracking.conference_id}:`, {
+      recording_url: payload.recording_url,
+      transcript_url: payload.transcript_url,
+      smart_notes_url: payload.smart_notes_url
+    });
 
     // Enviar webhook
     await sendWebhook(payload);

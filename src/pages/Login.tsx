@@ -61,7 +61,7 @@ export default function Login() {
         {/* Stats */}
         <div className="flex gap-14">
           {[
-            { value: '30min', label: 'Timeout máximo' },
+            { value: '100min', label: 'Timeout máximo' },
             { value: '3', label: 'Artefatos por reunião' },
             { value: 'Auto', label: 'Webhook dispatch' },
           ].map((stat) => (
