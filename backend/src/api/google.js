@@ -73,6 +73,42 @@ async function getSmartNote(smartNoteName, impersonatedEmail) {
     }
 }
 
+async function listConferenceRecordings(conferenceId, impersonatedEmail) {
+    try {
+        const client = getMeetClient(impersonatedEmail);
+        const [recordings] = await client.listRecordings({ parent: conferenceId });
+        logger.info(`Recordings listados para ${conferenceId}: ${recordings?.length || 0} encontrados`);
+        return recordings || [];
+    } catch (error) {
+        logger.error(`Falha ao listar recordings para ${conferenceId}:`, { error: error.message });
+        throw error;
+    }
+}
+
+async function listConferenceTranscripts(conferenceId, impersonatedEmail) {
+    try {
+        const client = getMeetClient(impersonatedEmail);
+        const [transcripts] = await client.listTranscripts({ parent: conferenceId });
+        logger.info(`Transcripts listados para ${conferenceId}: ${transcripts?.length || 0} encontrados`);
+        return transcripts || [];
+    } catch (error) {
+        logger.error(`Falha ao listar transcripts para ${conferenceId}:`, { error: error.message });
+        throw error;
+    }
+}
+
+async function listConferenceSmartNotes(conferenceId, impersonatedEmail) {
+    try {
+        const client = getMeetClient(impersonatedEmail);
+        const [smartNotes] = await client.listSmartNotes({ parent: conferenceId });
+        logger.info(`Smart notes listados para ${conferenceId}: ${smartNotes?.length || 0} encontrados`);
+        return smartNotes || [];
+    } catch (error) {
+        logger.error(`Falha ao listar smart notes para ${conferenceId}:`, { error: error.message });
+        throw error;
+    }
+}
+
 function getGoogleDriveLink(fileId) {
     return `https://drive.google.com/file/d/${fileId}/view`;
 }
@@ -187,6 +223,9 @@ module.exports = {
     getRecording,
     getTranscript,
     getSmartNote,
+    listConferenceRecordings,
+    listConferenceTranscripts,
+    listConferenceSmartNotes,
     getUserEmailFromDirectory,
     copyFileToSharedFolderAndGetLink,
 };

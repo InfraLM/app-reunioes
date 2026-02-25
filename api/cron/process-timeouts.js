@@ -5,7 +5,7 @@ const require = createRequire(import.meta.url);
 
 const logger = require('../../backend/src/utils/logger');
 const prisma = require('../../lib/prisma.cjs');
-const { getConferenceDetails, getRecording, getTranscript, getSmartNote } = require('../../backend/src/api/google');
+const { getConferenceDetails, getRecording, getTranscript, getSmartNote, listConferenceRecordings, listConferenceTranscripts, listConferenceSmartNotes } = require('../../backend/src/api/google');
 const { sendWebhook } = require('../../backend/src/api/webhook');
 const config = require('../../backend/src/config');
 
@@ -140,6 +140,50 @@ async function processTimedOutConference(tracking) {
     let recordingUrl = tracking.recording_url || null;
     let transcriptUrl = tracking.transcript_url || null;
     let smartNoteUrl = tracking.smart_note_url || null;
+
+    // Listagem proativa: descobrir artefatos não recebidos via Pub/Sub
+    // (eventos de transcript/smart note podem nunca chegar mesmo com arquivos no Drive)
+    const updateFromList = {};
+    if (!tracking.has_recording) {
+      try {
+        const recordings = await listConferenceRecordings(tracking.conference_id, impersonatedEmail);
+        if (recordings.length > 0) {
+          const url = getArtifactLink(recordings[0]);
+          updateFromList.has_recording = true;
+          updateFromList.recording_name = recordings[0].name;
+          if (url) { updateFromList.recording_url = url; recordingUrl = url; }
+        }
+      } catch (err) { logger.warn(`Listagem de gravações falhou: ${err.message}`); }
+    }
+    if (!tracking.has_transcript) {
+      try {
+        const transcripts = await listConferenceTranscripts(tracking.conference_id, impersonatedEmail);
+        if (transcripts.length > 0) {
+          const url = getArtifactLink(transcripts[0]);
+          updateFromList.has_transcript = true;
+          updateFromList.transcript_name = transcripts[0].name;
+          if (url) { updateFromList.transcript_url = url; transcriptUrl = url; }
+        }
+      } catch (err) { logger.warn(`Listagem de transcrições falhou: ${err.message}`); }
+    }
+    if (!tracking.has_smart_note) {
+      try {
+        const smartNotes = await listConferenceSmartNotes(tracking.conference_id, impersonatedEmail);
+        if (smartNotes.length > 0) {
+          const url = getArtifactLink(smartNotes[0]);
+          updateFromList.has_smart_note = true;
+          updateFromList.smart_note_name = smartNotes[0].name;
+          if (url) { updateFromList.smart_note_url = url; smartNoteUrl = url; }
+        }
+      } catch (err) { logger.warn(`Listagem de smart notes falhou: ${err.message}`); }
+    }
+    if (Object.keys(updateFromList).length > 0) {
+      await prisma.conferenceArtifactTracking.update({
+        where: { id: tracking.id },
+        data: updateFromList
+      });
+      logger.info(`Artefatos descobertos via listagem para ${tracking.conference_id}:`, updateFromList);
+    }
 
     if (!recordingUrl && tracking.has_recording && tracking.recording_name) {
       try {
