@@ -13,30 +13,29 @@ const config = require('../../backend/src/config');
  * O local do ID da conferência varia dependendo do tipo de evento.
  */
 function getConferenceIdFromEvent(event) {
-  const payload = event.payload;
-  if (payload?.conferenceRecord?.name) {
-    return payload.conferenceRecord.name;
+  // Para eventos diretos da conferência (started, ended)
+  if (event.conferenceRecord?.name) {
+    return event.conferenceRecord.name;
   }
-  if (payload?.recording?.conferenceRecord) {
-    return payload.recording.conferenceRecord;
-  }
-  if (payload?.transcript?.conferenceRecord) {
-    return payload.transcript.conferenceRecord;
-  }
-  if (payload?.smartNote?.conferenceRecord) {
-    return payload.smartNote.conferenceRecord;
+
+  // Para eventos de artefatos (recording, transcript, etc.), o ID está na string do nome.
+  const artifactName = event.recording?.name || event.transcript?.name || event.smartNote?.name;
+  if (artifactName) {
+    const match = artifactName.match(/^(conferenceRecords\/[^\/]+)/);
+    if (match) {
+      return match[1];
+    }
   }
   return null;
 }
 
 /**
- * Extrai o nome do artefato e o tipo do payload do evento.
+ * Extrai o nome do artefato e o tipo do evento.
  */
 function getArtifactDetails(event) {
-    const payload = event.payload;
-    if (event.eventType.includes('recording')) return { type: 'recording', name: payload.recording?.name };
-    if (event.eventType.includes('transcript')) return { type: 'transcript', name: payload.transcript?.name };
-    if (event.eventType.includes('smartNote')) return { type: 'smartNote', name: payload.smartNote?.name };
+    if (event.eventType.includes('recording')) return { type: 'recording', name: event.recording?.name };
+    if (event.eventType.includes('transcript')) return { type: 'transcript', name: event.transcript?.name };
+    if (event.eventType.includes('smartNote')) return { type: 'smartNote', name: event.smartNote?.name };
     return null;
 }
 
@@ -74,7 +73,7 @@ export default async function handler(req, res) {
     logger.info("Event received from Pub/Sub Push", {
         eventType: event.eventType,
         subject: event.subject,
-        payload: event.payload,
+        payload: eventData,
         eventTime: req.headers['ce-time'],
     });
 
@@ -82,7 +81,7 @@ export default async function handler(req, res) {
     const conferenceId = getConferenceIdFromEvent(event);
 
     if (!conferenceId) {
-        logger.warn('Could not parse conferenceId from event payload.', { payload: event.payload });
+        logger.warn('Could not parse conferenceId from event payload.', { payload: eventData });
         return res.status(200).send('Event ignored: no conferenceId found.');
     }
 
@@ -107,20 +106,20 @@ export default async function handler(req, res) {
     if (artifact?.type === 'recording') {
         updateData.has_recording = true;
         updateData.recording_name = artifact.name;
-        if (event.payload.recording?.driveDestination?.exportUri) {
-            updateData.recording_url = event.payload.recording.driveDestination.exportUri;
+        if (event.recording?.driveDestination?.exportUri) {
+            updateData.recording_url = event.recording.driveDestination.exportUri;
         }
     } else if (artifact?.type === 'transcript') {
         updateData.has_transcript = true;
         updateData.transcript_name = artifact.name;
-        if (event.payload.transcript?.docsDestination?.exportUri) {
-            updateData.transcript_url = event.payload.transcript.docsDestination.exportUri;
+        if (event.transcript?.docsDestination?.exportUri) {
+            updateData.transcript_url = event.transcript.docsDestination.exportUri;
         }
     } else if (artifact?.type === 'smartNote') {
         updateData.has_smart_note = true;
         updateData.smart_note_name = artifact.name;
-        if (event.payload.smartNote?.docsDestination?.exportUri) {
-            updateData.smart_note_url = event.payload.smartNote.docsDestination.exportUri;
+        if (event.smartNote?.docsDestination?.exportUri) {
+            updateData.smart_note_url = event.smartNote.docsDestination.exportUri;
         }
     }
 
