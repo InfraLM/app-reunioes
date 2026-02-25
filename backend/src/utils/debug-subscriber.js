@@ -50,14 +50,14 @@ async function debugSubscriber() {
         const targetResourceID = `//cloudidentity.googleapis.com/users/${user.id}`;
         console.log(`   Tentando com ID: ${targetResourceID}`);
 
+        // A API do Google Workspace Events exige o ID numérico único do usuário no "target_resource",
+        // e não o seu endereço de e-mail.
         try {
             const response = await workspaceEvents.subscriptions.create({
                 auth: userAuth,
                 requestBody: {
                     target_resource: targetResourceID,
-                    event_types: [
-                        "google.workspace.meet.recording.v2.fileGenerated",
-                    ],
+                    event_types: ["google.workspace.meet.recording.v2.fileGenerated"],
                     notification_endpoint: {
                         pubsub_topic: `projects/${config.google.projectId}/topics/${config.pubsub.topicName}`,
                     },
@@ -67,50 +67,14 @@ async function debugSubscriber() {
 
             // Cleanup
             console.log("🧹 Removendo assinatura de teste...");
-            await workspaceEvents.subscriptions.delete({
-                auth: userAuth,
-                name: response.data.name,
-            });
+            await workspaceEvents.subscriptions.delete({ auth: userAuth, name: response.data.name });
             console.log("✅ Assinatura removida.");
-
         } catch (subError) {
             console.error("❌ ERRO ao criar assinatura (usando ID):");
             console.error(`   Status: ${subError.code}`);
             console.error(`   Mensagem: ${subError.message}`);
             if (subError.response && subError.response.data && subError.response.data.error) {
                 console.error("   Detalhes:", JSON.stringify(subError.response.data.error, null, 2));
-            }
-
-            // TENTATIVA B: Usando Email (como fallback/comparação)
-            const targetResourceEmail = `//cloudidentity.googleapis.com/users/${user.primaryEmail}`;
-            console.log(`\n   Tentando com Email: ${targetResourceEmail}`);
-            try {
-                const response = await workspaceEvents.subscriptions.create({
-                    auth: userAuth,
-                    requestBody: {
-                        target_resource: targetResourceEmail,
-                        event_types: [
-                            "google.workspace.meet.recording.v2.fileGenerated",
-                        ],
-                        notification_endpoint: {
-                            pubsub_topic: `projects/${config.google.projectId}/topics/${config.pubsub.topicName}`,
-                        },
-                    },
-                });
-                console.log("✅ Assinatura criada com SUCESSO (usando Email)!", response.data);
-                // Cleanup...
-                console.log("🧹 Removendo assinatura de teste (criada com Email)...");
-                await workspaceEvents.subscriptions.delete({
-                    auth: userAuth,
-                    name: response.data.name,
-                });
-                console.log("✅ Assinatura removida.");
-            } catch (emailError) {
-                console.error("❌ ERRO ao criar assinatura (usando Email):");
-                console.error(`   Mensagem: ${emailError.message}`);
-                if (emailError.response && emailError.response.data && emailError.response.data.error) {
-                    console.error("   Detalhes:", JSON.stringify(emailError.response.data.error, null, 2));
-                }
             }
         }
 

@@ -3,10 +3,10 @@ import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
 
-const logger = require('../../backend/src/utils/logger');
-const prisma = require('../../lib/prisma.cjs');
-const { getUserEmailFromDirectory } = require('../../backend/src/api/google');
-const config = require('../../backend/src/config');
+const logger = require('../backend/src/utils/logger');
+const prisma = require('../lib/prisma.cjs');
+const { getUserEmailFromDirectory } = require('../backend/src/api/google');
+const config = require('../backend/src/config');
 
 /**
  * Extrai o ID da conferência do payload do evento.
@@ -51,12 +51,6 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Adicionado para logar o corpo completo do evento recebido do Pub/Sub.
-    // Isso ajuda a depurar o payload exato que o Google está enviando.
-    logger.info('Payload completo recebido do Pub/Sub Push', {
-      body: req.body,
-    });
-
     const { message } = req.body;
 
     if (!message) {
@@ -71,7 +65,7 @@ export default async function handler(req, res) {
 
     const event = { ...eventData, eventType, subject };
 
-    logger.info("Event received from Pub/Sub Push", {
+    logger.info('Event received from Pub/Sub Push', {
         eventType: event.eventType,
         subject: event.subject,
         payload: event.payload,
@@ -80,7 +74,6 @@ export default async function handler(req, res) {
 
     // **LÓGICA CORRIGIDA**
     const conferenceId = getConferenceIdFromEvent(event);
-
     if (!conferenceId) {
         logger.warn('Could not parse conferenceId from event payload.', { payload: event.payload });
         return res.status(200).send('Event ignored: no conferenceId found.');
