@@ -65,16 +65,17 @@ export default async function handler(req, res) {
 
     // Decodificar dados do Pub/Sub
     const eventData = JSON.parse(Buffer.from(message.data, 'base64').toString('utf-8'));
-    const eventType = req.headers['ce-type'];
-    const subject = req.headers['ce-subject'];
+    const eventType = message.attributes['ce-type'];
+    const subject = message.attributes['ce-subject'];
+    const eventTime = message.attributes['ce-time'];
 
-    const event = { ...eventData, eventType, subject };
+    const event = { ...eventData, eventType, subject, eventTime };
 
     logger.info("Event received from Pub/Sub Push", {
         eventType: event.eventType,
         subject: event.subject,
         payload: eventData,
-        eventTime: req.headers['ce-time'],
+        eventTime: event.eventTime,
     });
 
     // **LÓGICA CORRIGIDA**
