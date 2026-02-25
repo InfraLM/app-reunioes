@@ -128,21 +128,15 @@ async function processTimedOutConference(tracking) {
       logger.warn(`Não foi possível buscar detalhes da conferência ${tracking.conference_id}: ${error.message}. Continuando com fallback.`);
     }
 
-    // Função auxiliar para extrair links do objeto de artefato
+    // Função auxiliar para extrair a URL permanente de um artefato
     const getArtifactLink = (art) => {
       if (!art) return null;
-      // Para Gravações (driveDestination) — exportUri é a URL permanente
-      if (art.driveDestination && art.driveDestination.exportUri) {
-        return art.driveDestination.exportUri;
-      }
-      // Para Transcrições e Notas (docsDestination) — exportUri é a URL permanente
-      if (art.docsDestination && art.docsDestination.exportUri) {
-        return art.docsDestination.exportUri;
-      }
+      if (art.driveDestination?.exportUri) return art.driveDestination.exportUri;
+      if (art.docsDestination?.exportUri) return art.docsDestination.exportUri;
       return null;
     };
 
-    // Buscar artefatos: usar URL já armazenada (do evento Pub/Sub) ou tentar via API
+    // Buscar artefatos: usar URL já armazenada ou tentar via API
     let recordingUrl = tracking.recording_url || null;
     let transcriptUrl = tracking.transcript_url || null;
     let smartNoteUrl = tracking.smart_note_url || null;
@@ -155,10 +149,7 @@ async function processTimedOutConference(tracking) {
       } catch (err) {
         logger.warn(`Não foi possível buscar gravação: ${err.message}`);
       }
-    } else if (recordingUrl) {
-      logger.info(`Usando URL de gravação do evento Pub/Sub: ${recordingUrl}`);
     }
-
     if (!transcriptUrl && tracking.has_transcript && tracking.transcript_name) {
       try {
         const transcript = await getTranscript(tracking.transcript_name, impersonatedEmail);
@@ -167,10 +158,7 @@ async function processTimedOutConference(tracking) {
       } catch (err) {
         logger.warn(`Não foi possível buscar transcrição: ${err.message}`);
       }
-    } else if (transcriptUrl) {
-      logger.info(`Usando URL de transcrição do evento Pub/Sub: ${transcriptUrl}`);
     }
-
     if (!smartNoteUrl && tracking.has_smart_note && tracking.smart_note_name) {
       try {
         const smartNote = await getSmartNote(tracking.smart_note_name, impersonatedEmail);
@@ -179,8 +167,19 @@ async function processTimedOutConference(tracking) {
       } catch (err) {
         logger.warn(`Não foi possível buscar anotações: ${err.message}`);
       }
-    } else if (smartNoteUrl) {
-      logger.info(`Usando URL de smart note do evento Pub/Sub: ${smartNoteUrl}`);
+    }
+
+    // Persistir URLs obtidas via API no banco
+    const urlsToPersist = {};
+    if (recordingUrl && !tracking.recording_url) urlsToPersist.recording_url = recordingUrl;
+    if (transcriptUrl && !tracking.transcript_url) urlsToPersist.transcript_url = transcriptUrl;
+    if (smartNoteUrl && !tracking.smart_note_url) urlsToPersist.smart_note_url = smartNoteUrl;
+    if (Object.keys(urlsToPersist).length > 0) {
+      await prisma.conferenceArtifactTracking.update({
+        where: { id: tracking.id },
+        data: urlsToPersist
+      });
+      logger.info(`URLs persistidas no banco para ${tracking.conference_id}:`, urlsToPersist);
     }
 
     // Preparar payload com artefatos parciais
