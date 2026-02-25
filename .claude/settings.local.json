@@ -29,7 +29,13 @@
       "Bash(c:/devVini/meet-workspace/.env.example:*)",
       "Bash(node --check:*)",
       "Bash(c:/devVini/meet-workspace/.vercelignore:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(npx dotenv -e backend/.env -- npx prisma db push)",
+      "Bash(set -a)",
+      "Bash(source backend/.env)",
+      "Bash(set +a)",
+      "Bash(source .env)",
+      "Bash(DATABASE_URL=\"placeholder\" npx prisma generate)"
     ]
   }
 }

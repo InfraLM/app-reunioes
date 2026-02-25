@@ -75,6 +75,9 @@ model ConferenceArtifactTracking {
   recording_name     String?
   transcript_name    String?
   smart_note_name    String?
+  recording_url      String? // URL direta extraída do evento Pub/Sub (exportUri)
+  transcript_url     String?
+  smart_note_url     String?
   first_event_at     DateTime  @default(now())
   last_event_at      DateTime  @default(now())
   timeout_at         DateTime // Timeout para processar artefatos parciais
