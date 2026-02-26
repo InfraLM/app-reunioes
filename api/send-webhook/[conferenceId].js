@@ -126,14 +126,9 @@ export default async function handler(req, res) {
     // Função auxiliar para extrair links
     const getArtifactLink = (art) => {
       if (!art) return null;
-      // Para Gravações (driveDestination) — exportUri é a URL permanente
-      if (art.driveDestination && art.driveDestination.exportUri) {
-        return art.driveDestination.exportUri;
-      }
-      // Para Transcrições e Notas (docsDestination) — exportUri é a URL permanente
-      if (art.docsDestination && art.docsDestination.exportUri) {
-        return art.docsDestination.exportUri;
-      }
+      if (art.driveDestination?.exportUri) return art.driveDestination.exportUri;
+      if (art.docsDestination?.exportUri) return art.docsDestination.exportUri;
+      if (art.docsDestination?.document) return art.docsDestination.document;
       return null;
     };
 

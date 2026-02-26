@@ -133,6 +133,7 @@ async function processTimedOutConference(tracking) {
       if (!art) return null;
       if (art.driveDestination?.exportUri) return art.driveDestination.exportUri;
       if (art.docsDestination?.exportUri) return art.docsDestination.exportUri;
+      if (art.docsDestination?.document) return art.docsDestination.document;
       return null;
     };
 

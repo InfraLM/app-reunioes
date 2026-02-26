@@ -119,8 +119,10 @@ export default async function handler(req, res) {
     } else if (artifact?.type === 'smartNote') {
         updateData.has_smart_note = true;
         updateData.smart_note_name = artifact.name;
-        if (event.smartNote?.docsDestination?.exportUri) {
-            updateData.smart_note_url = event.smartNote.docsDestination.exportUri;
+        const smartNoteUrl = event.smartNote?.docsDestination?.document
+            || event.smartNote?.docsDestination?.exportUri;
+        if (smartNoteUrl) {
+            updateData.smart_note_url = smartNoteUrl;
         }
     }
 

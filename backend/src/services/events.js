@@ -207,13 +207,11 @@ async function processCompleteConference(conferenceId) {
         const getArtifactLink = (art) => {
             if (!art) return null;
             // Para Gravações (driveDestination) — exportUri é a URL permanente
-            if (art.driveDestination && art.driveDestination.exportUri) {
-                return art.driveDestination.exportUri;
-            }
+            if (art.driveDestination?.exportUri) return art.driveDestination.exportUri;
             // Para Transcrições e Notas (docsDestination) — exportUri é a URL permanente
-            if (art.docsDestination && art.docsDestination.exportUri) {
-                return art.docsDestination.exportUri;
-            }
+            if (art.docsDestination?.exportUri) return art.docsDestination.exportUri;
+            // NOVO: Fallback para Smart Notes que usam o campo 'document'
+            if (art.docsDestination?.document) return art.docsDestination.document;
             return null;
         };
 
