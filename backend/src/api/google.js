@@ -61,12 +61,11 @@ async function getTranscript(transcriptName, impersonatedEmail) {
 
 async function getSmartNote(smartNoteName, impersonatedEmail) {
     try {
-        const client = getMeetClient(impersonatedEmail);
-        // Nota: Smart Notes pode estar em v2beta ou similar, mas tentamos no client v2 padrão primeiro
-        // O método correto na API é getSmartNote
-        const [response] = await client.getSmartNote({ name: smartNoteName });
-        logger.info(`Smart Note details retrieved for: ${smartNoteName}`, { details: response });
-        return response;
+        const auth = impersonatedEmail ? getAuthClientForUser(impersonatedEmail) : getAuthClient();
+        const meet = google.meet({ version: 'v2', auth });
+        const response = await meet.conferenceRecords.smartNotes.get({ name: smartNoteName });
+        logger.info(`Smart Note details retrieved for: ${smartNoteName}`, { details: response.data });
+        return response.data;
     } catch (error) {
         logger.error(`Failed to get smart note details for: ${smartNoteName}`, { error: error.message });
         throw error;
@@ -99,10 +98,12 @@ async function listConferenceTranscripts(conferenceId, impersonatedEmail) {
 
 async function listConferenceSmartNotes(conferenceId, impersonatedEmail) {
     try {
-        const client = getMeetClient(impersonatedEmail);
-        const [smartNotes] = await client.listSmartNotes({ parent: conferenceId });
-        logger.info(`Smart notes listados para ${conferenceId}: ${smartNotes?.length || 0} encontrados`);
-        return smartNotes || [];
+        const auth = impersonatedEmail ? getAuthClientForUser(impersonatedEmail) : getAuthClient();
+        const meet = google.meet({ version: 'v2', auth });
+        const response = await meet.conferenceRecords.smartNotes.list({ parent: conferenceId });
+        const smartNotes = response.data.smartNotes || [];
+        logger.info(`Smart notes listados para ${conferenceId}: ${smartNotes.length} encontrados`);
+        return smartNotes;
     } catch (error) {
         logger.error(`Falha ao listar smart notes para ${conferenceId}:`, { error: error.message });
         throw error;
