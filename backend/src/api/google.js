@@ -62,10 +62,17 @@ async function getTranscript(transcriptName, impersonatedEmail) {
 async function getSmartNote(smartNoteName, impersonatedEmail) {
     try {
         const auth = impersonatedEmail ? getAuthClientForUser(impersonatedEmail) : getAuthClient();
-        const meet = google.meet({ version: 'v2', auth });
-        const response = await meet.conferenceRecords.smartNotes.get({ name: smartNoteName });
-        logger.info(`Smart Note details retrieved for: ${smartNoteName}`, { details: response.data });
-        return response.data;
+        const { token } = await auth.getAccessToken();
+        const url = `https://meet.googleapis.com/v2/${smartNoteName}`;
+        const response = await fetch(url, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+        }
+        const data = await response.json();
+        logger.info(`Smart Note details retrieved for: ${smartNoteName}`, { details: data });
+        return data;
     } catch (error) {
         logger.error(`Failed to get smart note details for: ${smartNoteName}`, { error: error.message });
         throw error;
@@ -99,9 +106,17 @@ async function listConferenceTranscripts(conferenceId, impersonatedEmail) {
 async function listConferenceSmartNotes(conferenceId, impersonatedEmail) {
     try {
         const auth = impersonatedEmail ? getAuthClientForUser(impersonatedEmail) : getAuthClient();
-        const meet = google.meet({ version: 'v2', auth });
-        const response = await meet.conferenceRecords.smartNotes.list({ parent: conferenceId });
-        const smartNotes = response.data.smartNotes || [];
+        const { token } = await auth.getAccessToken();
+        const url = `https://meet.googleapis.com/v2/${conferenceId}/smartNotes`;
+        const response = await fetch(url, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) {
+            if (response.status === 404) return [];
+            throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+        }
+        const data = await response.json();
+        const smartNotes = data.smartNotes || [];
         logger.info(`Smart notes listados para ${conferenceId}: ${smartNotes.length} encontrados`);
         return smartNotes;
     } catch (error) {

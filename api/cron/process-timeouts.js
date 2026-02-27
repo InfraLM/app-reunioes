@@ -51,9 +51,16 @@ export default async function handler(req, res) {
               { has_transcript: true, transcript_url: null },
               { has_smart_note: true, smart_note_url: null }
             ]
+          },
+          // Conferências travadas em 'processing' de um cron anterior que sofreu timeout
+          {
+            status: 'processing',
+            updated_at: { lte: new Date(Date.now() - 5 * 60 * 1000) }
           }
         ]
-      }
+      },
+      orderBy: { timeout_at: 'asc' },
+      take: 5
     });
 
     logger.info(`Encontradas ${timedOutConferences.length} conferências com timeout`);
