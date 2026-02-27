@@ -36,13 +36,23 @@ export default async function handler(req, res) {
     const now = new Date();
     const timedOutConferences = await prisma.conferenceArtifactTracking.findMany({
       where: {
-        timeout_at: {
-          lte: now
-        },
-        status: {
-          in: ['waiting', 'error']
-        },
-        processed_at: null // Só retentar se nunca enviou webhook com sucesso
+        timeout_at: { lte: now },
+        OR: [
+          // Conferências novas ou que falharam sem nunca ter enviado webhook
+          {
+            status: { in: ['waiting', 'error'] },
+            processed_at: null
+          },
+          // Conferências parcialmente processadas com URLs ainda faltando
+          {
+            status: 'partial_complete',
+            OR: [
+              { has_recording: true, recording_url: null },
+              { has_transcript: true, transcript_url: null },
+              { has_smart_note: true, smart_note_url: null }
+            ]
+          }
+        ]
       }
     });
 
@@ -260,8 +270,19 @@ async function processTimedOutConference(tracking) {
 
       // Salvar reunião no banco de dados
       try {
-        await prisma.eppReunioesGovernanca.create({
-          data: {
+        await prisma.eppReunioesGovernanca.upsert({
+          where: { conference_id: tracking.conference_id },
+          update: {
+            titulo_reuniao: payload.meeting_title,
+            data_reuniao: payload.start_time ? new Date(payload.start_time) : null,
+            hora_inicio: payload.start_time || null,
+            hora_fim: payload.end_time || null,
+            responsavel: payload.account_email,
+            ...(payload.recording_url && { link_gravacao: payload.recording_url }),
+            ...(payload.transcript_url && { link_transcricao: payload.transcript_url }),
+            ...(payload.smart_notes_url && { link_anotacao: payload.smart_notes_url }),
+          },
+          create: {
             conference_id: tracking.conference_id,
             titulo_reuniao: payload.meeting_title,
             data_reuniao: payload.start_time ? new Date(payload.start_time) : null,
@@ -273,17 +294,21 @@ async function processTimedOutConference(tracking) {
             link_anotacao: payload.smart_notes_url,
           }
         });
-        logger.info(`Reunião ${tracking.conference_id} salva no banco (parcial).`);
+        logger.info(`Reunião ${tracking.conference_id} salva/atualizada no banco.`);
       } catch (dbError) {
-        // Pode ser duplicate key se já foi processada
         logger.error(`Erro ao salvar no banco: ${dbError.message}`);
       }
 
-      // Marcar como completo (parcial)
+      // Marcar como 'complete' se todas as URLs esperadas foram encontradas, senão 'partial_complete'
+      const allUrlsFound =
+        (!tracking.has_recording || !!recordingUrl) &&
+        (!tracking.has_transcript || !!transcriptUrl) &&
+        (!tracking.has_smart_note || !!smartNoteUrl);
+
       await prisma.conferenceArtifactTracking.update({
         where: { id: tracking.id },
         data: {
-          status: 'partial_complete',
+          status: allUrlsFound ? 'complete' : 'partial_complete',
           processed_at: new Date()
         }
       });
