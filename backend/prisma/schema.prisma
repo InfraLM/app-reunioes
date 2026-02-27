@@ -80,8 +80,8 @@ model ConferenceArtifactTracking {
   smart_note_url     String?
   first_event_at     DateTime  @default(now())
   last_event_at      DateTime  @default(now())
-  timeout_at         DateTime // Timeout para processar artefatos parciais
-  status             String    @default("waiting") // waiting, processing, complete, error, ignored
+  timeout_at         DateTime? // Timeout para processar artefatos parciais (null enquanto no_artifact)
+  status             String    @default("no_artifact") // no_artifact, waiting, processing, complete, partial_complete, error, ignored
   processed_at       DateTime?
   created_at         DateTime  @default(now())
   updated_at         DateTime  @updatedAt

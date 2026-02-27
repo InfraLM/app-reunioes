@@ -126,9 +126,9 @@ export default async function handler(req, res) {
         }
     }
 
-    // Timeout de 100 minutos a partir do primeiro evento
-    const timeoutMinutes = 100;
-    const timeoutAt = new Date(Date.now() + timeoutMinutes * 60 * 1000);
+    // O timer de 100 minutos só começa quando o PRIMEIRO artefato chega.
+    // Eventos de conference.started/ended criam o registro com status 'no_artifact'.
+    const hasArtifact = !!artifact;
 
     // Cria ou atualiza o registro da conferência
     const tracking = await prisma.conferenceArtifactTracking.upsert({
@@ -137,14 +137,28 @@ export default async function handler(req, res) {
       create: {
         conference_id: conferenceId,
         user_email: userEmail,
-        status: 'waiting',
-        timeout_at: timeoutAt,
+        status: hasArtifact ? 'waiting' : 'no_artifact',
+        timeout_at: hasArtifact ? new Date(Date.now() + 100 * 60 * 1000) : null,
         ...updateData
       }
     });
 
+    // Se chegou um artefato e o registro ainda estava em 'no_artifact', promover para 'waiting'
+    // e iniciar o timer de 100 minutos a partir deste momento.
+    if (hasArtifact && tracking.status === 'no_artifact') {
+      await prisma.conferenceArtifactTracking.update({
+        where: { id: tracking.id },
+        data: {
+          status: 'waiting',
+          timeout_at: new Date(Date.now() + 100 * 60 * 1000)
+        }
+      });
+      logger.info(`Conferência ${conferenceId} promovida de 'no_artifact' para 'waiting' com o primeiro artefato.`);
+    }
+
     logger.info(`Conference artifact tracking updated for ${conferenceId}`, {
         id: tracking.id,
+        status: hasArtifact && tracking.status === 'no_artifact' ? 'waiting' : tracking.status,
         new_data: updateData
     });
 
