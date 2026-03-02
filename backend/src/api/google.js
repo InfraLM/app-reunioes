@@ -63,7 +63,7 @@ async function getSmartNote(smartNoteName, impersonatedEmail) {
     try {
         const auth = impersonatedEmail ? getAuthClientForUser(impersonatedEmail) : getAuthClient();
         const { token } = await auth.getAccessToken();
-        const url = `https://meet.googleapis.com/v2/${smartNoteName}`;
+        const url = `https://meet.googleapis.com/v2beta/${smartNoteName}`;
         const response = await fetch(url, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -107,7 +107,7 @@ async function listConferenceSmartNotes(conferenceId, impersonatedEmail) {
     try {
         const auth = impersonatedEmail ? getAuthClientForUser(impersonatedEmail) : getAuthClient();
         const { token } = await auth.getAccessToken();
-        const url = `https://meet.googleapis.com/v2/${conferenceId}/smartNotes`;
+        const url = `https://meet.googleapis.com/v2beta/${conferenceId}/smartNotes`;
         const response = await fetch(url, {
             headers: { 'Authorization': `Bearer ${token}` }
         });

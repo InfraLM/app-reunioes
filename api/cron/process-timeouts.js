@@ -324,7 +324,7 @@ async function processTimedOutConference(tracking) {
       logger.warn(`Nenhum artefato encontrado para ${tracking.conference_id}`);
       await prisma.conferenceArtifactTracking.update({
         where: { id: tracking.id },
-        data: { status: 'error' }
+        data: { status: 'error', processed_at: new Date() }
       });
     }
 
@@ -332,7 +332,7 @@ async function processTimedOutConference(tracking) {
     logger.error(`Erro ao processar conferência com timeout ${tracking.conference_id}:`, error);
     await prisma.conferenceArtifactTracking.update({
       where: { id: tracking.id },
-      data: { status: 'error' }
+      data: { status: 'error', processed_at: new Date() }
     });
     throw error;
   }
