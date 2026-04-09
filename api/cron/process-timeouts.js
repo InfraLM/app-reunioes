@@ -1,0 +1,357 @@
+import 'dotenv/config';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
+
+const logger = require('../lib/logger');
+const prisma = require('../../lib/prisma.cjs');
+const { getConferenceDetails, getRecording, getTranscript, getSmartNote, listConferenceRecordings, listConferenceTranscripts, listConferenceSmartNotes } = require('../lib/google');
+const { sendWebhook } = require('../lib/webhook');
+const config = require('../lib/config');
+
+/**
+ * POST /api/cron/process-timeouts
+ *
+ * Chamado pelo Upstash QStash exatamente 100 minutos após o primeiro artefato de uma
+ * conferência chegar (agendado em api/webhooks/google-events.js).
+ *
+ * Aceita dois modos de operação:
+ *   1. Com body { conference_id: "..." } — processa apenas aquela conferência (modo QStash).
+ *   2. Sem body — varre o banco por todas as conferências com timeout expirado (modo fallback/manual).
+ *
+ * Segurança: valida o header Authorization: Bearer <CRON_SECRET>.
+ * O QStash envia o header automaticamente via Upstash-Forward-Authorization.
+ */
+export default async function handler(req, res) {
+  try {
+    // Validar token de autorização
+    const authHeader = req.headers.authorization;
+    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    // Modo 1: QStash envia conference_id específico no body
+    const specificConferenceId = req.body?.conference_id;
+    if (specificConferenceId) {
+      logger.info(`Processando conferência específica via QStash: ${specificConferenceId}`);
+      const tracking = await prisma.conferenceArtifactTracking.findUnique({
+        where: { conference_id: specificConferenceId },
+      });
+      if (!tracking) {
+        logger.warn(`Conferência não encontrada: ${specificConferenceId}`);
+        return res.status(200).json({ success: true, message: 'Conference not found, nothing to do.' });
+      }
+      if (['complete', 'partial_complete'].includes(tracking.status)) {
+        logger.info(`Conferência ${specificConferenceId} já processada (status: ${tracking.status}). Ignorando.`);
+        return res.status(200).json({ success: true, message: 'Already processed.' });
+      }
+      await processTimedOutConference(tracking);
+      return res.status(200).json({ success: true, message: 'Conference processed.', conference_id: specificConferenceId });
+    }
+
+    // Modo 2: Varredura geral (fallback manual ou para recuperar conferências perdidas)
+    logger.info('Iniciando varredura geral de timeouts...');
+    const now = new Date();
+    const timedOutConferences = await prisma.conferenceArtifactTracking.findMany({
+      where: {
+        timeout_at: { lte: now },
+        OR: [
+          // Conferências novas ou que falharam sem nunca ter enviado webhook
+          {
+            status: { in: ['waiting', 'error'] },
+            processed_at: null
+          },
+          // Conferências parcialmente processadas com URLs ainda faltando
+          {
+            status: 'partial_complete',
+            OR: [
+              { has_recording: true, recording_url: null },
+              { has_transcript: true, transcript_url: null },
+              { has_smart_note: true, smart_note_url: null }
+            ]
+          },
+          // Conferências travadas em 'processing' de um cron anterior que sofreu timeout
+          {
+            status: 'processing',
+            updated_at: { lte: new Date(Date.now() - 5 * 60 * 1000) }
+          }
+        ]
+      },
+      orderBy: { timeout_at: 'asc' },
+      take: 5
+    });
+
+    logger.info(`Encontradas ${timedOutConferences.length} conferências com timeout`);
+
+    const results = {
+      processed: 0,
+      errors: 0,
+      ignored: 0
+    };
+
+    // Processar cada conferência
+    for (const tracking of timedOutConferences) {
+      try {
+        logger.info(`Processando conferência com timeout: ${tracking.conference_id} (status: ${tracking.status})`);
+        await processTimedOutConference(tracking);
+        results.processed++;
+      } catch (error) {
+        logger.error(`Erro ao processar ${tracking.conference_id}:`, error);
+        results.errors++;
+      }
+    }
+
+    logger.info('Processamento de timeouts concluído', results);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Processamento concluído',
+      results
+    });
+
+  } catch (error) {
+    logger.error('Erro no processamento de timeouts:', error);
+    return res.status(500).json({
+      error: 'Internal Server Error',
+      message: error.message
+    });
+  }
+}
+
+/**
+ * Processa uma conferência que excedeu o timeout
+ * Envia webhook com os artefatos que foram encontrados
+ */
+async function processTimedOutConference(tracking) {
+  try {
+    // Marcar como em processamento
+    await prisma.conferenceArtifactTracking.update({
+      where: { id: tracking.id },
+      data: { status: 'processing' }
+    });
+
+    // Usar email do tracking ou fallback para impersonatedUser
+    const impersonatedEmail = tracking.user_email || config.google.impersonatedUser;
+    const organizerEmail = tracking.user_email;
+
+    // Validar se usuário está na lista de monitorados
+    if (!organizerEmail) {
+      logger.warn(`Email do usuário não identificado para: ${tracking.conference_id}`);
+      await prisma.conferenceArtifactTracking.update({
+        where: { id: tracking.id },
+        data: { status: 'ignored' }
+      });
+      return;
+    }
+
+    if (!config.usersToMonitor.includes(organizerEmail)) {
+      logger.info(`Usuário ${organizerEmail} não está na lista de monitorados.`);
+      await prisma.conferenceArtifactTracking.update({
+        where: { id: tracking.id },
+        data: { status: 'ignored' }
+      });
+      return;
+    }
+
+    logger.info(`Processando timeout para ${tracking.conference_id} (email: ${organizerEmail})`);
+
+    // Buscar detalhes da conferência (não-fatal: continua com fallback se falhar)
+    let conferenceDetails = null;
+    try {
+      conferenceDetails = await getConferenceDetails(tracking.conference_id, impersonatedEmail);
+    } catch (error) {
+      logger.warn(`Não foi possível buscar detalhes da conferência ${tracking.conference_id}: ${error.message}. Continuando com fallback.`);
+    }
+
+    // Função auxiliar para extrair a URL permanente de um artefato
+    const getArtifactLink = (art) => {
+      if (!art) return null;
+      if (art.driveDestination?.exportUri) return art.driveDestination.exportUri;
+      if (art.docsDestination?.exportUri) return art.docsDestination.exportUri;
+      if (art.docsDestination?.document) return art.docsDestination.document;
+      return null;
+    };
+
+    // Buscar artefatos: usar URL já armazenada ou tentar via API
+    let recordingUrl = tracking.recording_url || null;
+    let transcriptUrl = tracking.transcript_url || null;
+    let smartNoteUrl = tracking.smart_note_url || null;
+
+    // Listagem proativa: descobrir artefatos não recebidos via Pub/Sub
+    // (eventos de transcript/smart note podem nunca chegar mesmo com arquivos no Drive)
+    const updateFromList = {};
+    if (!tracking.has_recording) {
+      try {
+        const recordings = await listConferenceRecordings(tracking.conference_id, impersonatedEmail);
+        if (recordings.length > 0) {
+          const url = getArtifactLink(recordings[0]);
+          updateFromList.has_recording = true;
+          updateFromList.recording_name = recordings[0].name;
+          if (url) { updateFromList.recording_url = url; recordingUrl = url; }
+        }
+      } catch (err) { logger.warn(`Listagem de gravações falhou: ${err.message}`); }
+    }
+    if (!tracking.has_transcript) {
+      try {
+        const transcripts = await listConferenceTranscripts(tracking.conference_id, impersonatedEmail);
+        if (transcripts.length > 0) {
+          const url = getArtifactLink(transcripts[0]);
+          updateFromList.has_transcript = true;
+          updateFromList.transcript_name = transcripts[0].name;
+          if (url) { updateFromList.transcript_url = url; transcriptUrl = url; }
+        }
+      } catch (err) { logger.warn(`Listagem de transcrições falhou: ${err.message}`); }
+    }
+    if (!tracking.has_smart_note) {
+      try {
+        const smartNotes = await listConferenceSmartNotes(tracking.conference_id, impersonatedEmail);
+        if (smartNotes.length > 0) {
+          const url = getArtifactLink(smartNotes[0]);
+          updateFromList.has_smart_note = true;
+          updateFromList.smart_note_name = smartNotes[0].name;
+          if (url) { updateFromList.smart_note_url = url; smartNoteUrl = url; }
+        }
+      } catch (err) { logger.warn(`Listagem de smart notes falhou: ${err.message}`); }
+    }
+    if (Object.keys(updateFromList).length > 0) {
+      await prisma.conferenceArtifactTracking.update({
+        where: { id: tracking.id },
+        data: updateFromList
+      });
+      logger.info(`Artefatos descobertos via listagem para ${tracking.conference_id}:`, updateFromList);
+    }
+
+    if (!recordingUrl && tracking.has_recording && tracking.recording_name) {
+      try {
+        const recording = await getRecording(tracking.recording_name, impersonatedEmail);
+        recordingUrl = getArtifactLink(recording);
+        logger.info(`URL de gravação obtida via API: ${recordingUrl}`);
+      } catch (err) {
+        logger.warn(`Não foi possível buscar gravação: ${err.message}`);
+      }
+    }
+    if (!transcriptUrl && tracking.has_transcript && tracking.transcript_name) {
+      try {
+        const transcript = await getTranscript(tracking.transcript_name, impersonatedEmail);
+        transcriptUrl = getArtifactLink(transcript);
+        logger.info(`URL de transcrição obtida via API: ${transcriptUrl}`);
+      } catch (err) {
+        logger.warn(`Não foi possível buscar transcrição: ${err.message}`);
+      }
+    }
+    if (!smartNoteUrl && tracking.has_smart_note && tracking.smart_note_name) {
+      try {
+        const smartNote = await getSmartNote(tracking.smart_note_name, impersonatedEmail);
+        smartNoteUrl = getArtifactLink(smartNote);
+        logger.info(`URL de smart note obtida via API: ${smartNoteUrl}`);
+      } catch (err) {
+        logger.warn(`Não foi possível buscar anotações: ${err.message}`);
+      }
+    }
+
+    // Persistir URLs obtidas via API no banco
+    const urlsToPersist = {};
+    if (recordingUrl && !tracking.recording_url) urlsToPersist.recording_url = recordingUrl;
+    if (transcriptUrl && !tracking.transcript_url) urlsToPersist.transcript_url = transcriptUrl;
+    if (smartNoteUrl && !tracking.smart_note_url) urlsToPersist.smart_note_url = smartNoteUrl;
+    if (Object.keys(urlsToPersist).length > 0) {
+      await prisma.conferenceArtifactTracking.update({
+        where: { id: tracking.id },
+        data: urlsToPersist
+      });
+      logger.info(`URLs persistidas no banco para ${tracking.conference_id}:`, urlsToPersist);
+    }
+
+    // Preparar payload com artefatos parciais
+    const payload = {
+      conference_id: tracking.conference_id,
+      meeting_title: conferenceDetails?.space?.displayName || "Reunião do Google Meet",
+      start_time: conferenceDetails?.startTime || null,
+      end_time: conferenceDetails?.endTime || null,
+      recording_url: recordingUrl,
+      transcript_url: transcriptUrl,
+      smart_notes_url: smartNoteUrl,
+      account_email: organizerEmail,
+      partial: true, // Indica que é um processamento parcial
+      missing_artifacts: []
+    };
+
+    // Listar artefatos faltantes
+    if (!tracking.has_recording) payload.missing_artifacts.push('recording');
+    if (!tracking.has_transcript) payload.missing_artifacts.push('transcript');
+    if (!tracking.has_smart_note) payload.missing_artifacts.push('smart_note');
+
+    logger.info(`Payload do webhook para ${tracking.conference_id}:`, {
+      recording_url: payload.recording_url,
+      transcript_url: payload.transcript_url,
+      smart_notes_url: payload.smart_notes_url,
+      missing_artifacts: payload.missing_artifacts
+    });
+
+    // Enviar webhook apenas se houver pelo menos um artefato
+    if (tracking.has_recording || tracking.has_transcript || tracking.has_smart_note) {
+      await sendWebhook(payload);
+      logger.info(`Webhook enviado (parcial) para ${tracking.conference_id}`);
+
+      // Salvar reunião no banco de dados
+      try {
+        await prisma.eppReunioesGovernanca.upsert({
+          where: { conference_id: tracking.conference_id },
+          update: {
+            titulo_reuniao: payload.meeting_title,
+            data_reuniao: payload.start_time ? new Date(payload.start_time) : null,
+            hora_inicio: payload.start_time || null,
+            hora_fim: payload.end_time || null,
+            responsavel: payload.account_email,
+            ...(payload.recording_url && { link_gravacao: payload.recording_url }),
+            ...(payload.transcript_url && { link_transcricao: payload.transcript_url }),
+            ...(payload.smart_notes_url && { link_anotacao: payload.smart_notes_url }),
+          },
+          create: {
+            conference_id: tracking.conference_id,
+            titulo_reuniao: payload.meeting_title,
+            data_reuniao: payload.start_time ? new Date(payload.start_time) : null,
+            hora_inicio: payload.start_time || null,
+            hora_fim: payload.end_time || null,
+            responsavel: payload.account_email,
+            link_gravacao: payload.recording_url,
+            link_transcricao: payload.transcript_url,
+            link_anotacao: payload.smart_notes_url,
+          }
+        });
+        logger.info(`Reunião ${tracking.conference_id} salva/atualizada no banco.`);
+      } catch (dbError) {
+        logger.error(`Erro ao salvar no banco: ${dbError.message}`);
+      }
+
+      // Marcar como 'complete' se todas as URLs esperadas foram encontradas, senão 'partial_complete'
+      const allUrlsFound =
+        (!tracking.has_recording || !!recordingUrl) &&
+        (!tracking.has_transcript || !!transcriptUrl) &&
+        (!tracking.has_smart_note || !!smartNoteUrl);
+
+      await prisma.conferenceArtifactTracking.update({
+        where: { id: tracking.id },
+        data: {
+          status: allUrlsFound ? 'complete' : 'partial_complete',
+          processed_at: new Date()
+        }
+      });
+    } else {
+      // Nenhum artefato encontrado
+      logger.warn(`Nenhum artefato encontrado para ${tracking.conference_id}`);
+      await prisma.conferenceArtifactTracking.update({
+        where: { id: tracking.id },
+        data: { status: 'error', processed_at: new Date() }
+      });
+    }
+
+  } catch (error) {
+    logger.error(`Erro ao processar conferência com timeout ${tracking.conference_id}:`, error);
+    await prisma.conferenceArtifactTracking.update({
+      where: { id: tracking.id },
+      data: { status: 'error', processed_at: new Date() }
+    });
+    throw error;
+  }
+}

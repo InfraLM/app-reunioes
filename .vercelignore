@@ -1,0 +1,25 @@
+# Backend source files (não são necessários no deploy, apenas os endpoints em /api)
+backend/src/index.js
+backend/src/services/subscription.js
+backend/src/services/events.js
+backend/src/utils/debug-subscriber.js
+backend/src/utils/test-permissions.js
+backend/src/utils/check-google.js
+
+# Node modules (será reinstalado)
+node_modules
+backend/node_modules
+
+# Arquivos de desenvolvimento
+.env
+.env.local
+*.log
+.DS_Store
+
+# Arquivos de build do backend (não necessários)
+backend/dist
+backend/*.log
+
+# Arquivos do Git
+.git
+.gitignore
