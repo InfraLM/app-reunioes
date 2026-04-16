@@ -24,6 +24,7 @@ export default async function handler(req, res) {
           is_monitored: true,
           received_at: true,
           link: true,
+          resource_name: true,
         },
       }),
     ]);
