@@ -494,6 +494,18 @@ async function syncMeetStatus(mp, artefatosCompletos, aggregate) {
   }
 }
 
+/**
+ * Extrai resource_name do raw_payload JSONB quando o campo resource_name está null.
+ * O Pub/Sub envia: { recording: { name: "..." } } ou { transcript: { name: "..." } } etc.
+ */
+function extractResourceFromPayload(rawPayload, eventType) {
+  if (!rawPayload || typeof rawPayload !== 'object') return null;
+  if (eventType === 'recording') return rawPayload.recording?.name || null;
+  if (eventType === 'transcript') return rawPayload.transcript?.name || null;
+  if (eventType === 'smart_note') return rawPayload.smartNote?.name || null;
+  return null;
+}
+
 function aggregateEvents(events) {
   const agg = {
     user_email: null,
@@ -515,19 +527,28 @@ function aggregateEvents(events) {
     if (!agg.user_email && e.user_email) agg.user_email = e.user_email;
     if (!agg.user_id && e.user_id) agg.user_id = e.user_id;
     if (!agg.meet_space_id && e.meet_space_id) agg.meet_space_id = e.meet_space_id;
+
+    // Tenta resource_name do campo direto, fallback: extrai do raw_payload
+    const resName = e.resource_name || extractResourceFromPayload(e.raw_payload, e.event_type);
+
     if (e.event_type === 'recording') {
       agg.has_recording = true;
       if (e.link) agg.recording_original_link = e.link;
-      if (e.resource_name) agg.recording_resource_name = e.resource_name;
+      if (resName) agg.recording_resource_name = resName;
     } else if (e.event_type === 'transcript') {
       agg.has_transcript = true;
       if (e.link) agg.transcript_original_link = e.link;
-      if (e.resource_name) agg.transcript_resource_name = e.resource_name;
+      if (resName) agg.transcript_resource_name = resName;
     } else if (e.event_type === 'smart_note') {
       agg.has_smart_note = true;
       if (e.link) agg.smart_note_original_link = e.link;
-      if (e.resource_name) agg.smart_note_resource_name = e.resource_name;
+      if (resName) agg.smart_note_resource_name = resName;
     }
   }
+  console.log('[worker] aggregate result:', JSON.stringify({
+    rec_res: agg.recording_resource_name?.slice(-30),
+    trs_res: agg.transcript_resource_name?.slice(-30),
+    sn_res: agg.smart_note_resource_name?.slice(-30),
+  }));
   return agg;
 }
