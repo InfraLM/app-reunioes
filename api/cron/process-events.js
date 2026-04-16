@@ -300,6 +300,44 @@ async function resolveArtifactUrls(conferenceId, userEmail) {
   const mp = await prisma.eppMeetProcess.findUnique({ where: { conference_id: conferenceId } });
   if (!mp) return;
 
+  // Se meet_process não tem resource_name, buscar direto do evento_track (raw_payload)
+  if (mp.has_recording && !mp.recording_resource_name) {
+    const evt = await prisma.eppEventoTrack.findFirst({
+      where: { conference_id: conferenceId, event_type: 'recording', is_monitored: true },
+      select: { resource_name: true, raw_payload: true },
+    });
+    const name = evt?.resource_name || evt?.raw_payload?.recording?.name;
+    if (name) {
+      await prisma.eppMeetProcess.update({ where: { conference_id: conferenceId }, data: { recording_resource_name: name } });
+      mp.recording_resource_name = name;
+      console.log(`[worker] backfill rec_name: ${name.slice(-40)}`);
+    }
+  }
+  if (mp.has_transcript && !mp.transcript_resource_name) {
+    const evt = await prisma.eppEventoTrack.findFirst({
+      where: { conference_id: conferenceId, event_type: 'transcript', is_monitored: true },
+      select: { resource_name: true, raw_payload: true },
+    });
+    const name = evt?.resource_name || evt?.raw_payload?.transcript?.name;
+    if (name) {
+      await prisma.eppMeetProcess.update({ where: { conference_id: conferenceId }, data: { transcript_resource_name: name } });
+      mp.transcript_resource_name = name;
+      console.log(`[worker] backfill trs_name: ${name.slice(-40)}`);
+    }
+  }
+  if (mp.has_smart_note && !mp.smart_note_resource_name) {
+    const evt = await prisma.eppEventoTrack.findFirst({
+      where: { conference_id: conferenceId, event_type: 'smart_note', is_monitored: true },
+      select: { resource_name: true, raw_payload: true },
+    });
+    const name = evt?.resource_name || evt?.raw_payload?.smartNote?.name;
+    if (name) {
+      await prisma.eppMeetProcess.update({ where: { conference_id: conferenceId }, data: { smart_note_resource_name: name } });
+      mp.smart_note_resource_name = name;
+      console.log(`[worker] backfill sn_name: ${name.slice(-40)}`);
+    }
+  }
+
   const updates = {};
 
   // Recording
