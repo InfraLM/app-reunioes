@@ -155,7 +155,7 @@ export default function ReuniaoCard({ meeting, onClick, onCreateAta, actionLoadi
         <div className="flex items-center justify-between text-xs">
           <span className="text-zinc-500">Data</span>
           <span className="text-zinc-300 font-medium">
-            {formatDate(meeting.meeting_start_time || meeting.governanca?.data_reuniao || null)}
+            {formatDate(meeting.meeting_start_time || meeting.data_primeiro_artefato || meeting.governanca?.data_reuniao || null)}
           </span>
         </div>
 
