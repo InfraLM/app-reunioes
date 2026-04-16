@@ -7,6 +7,9 @@ const logger = require('../lib/logger');
 const prisma = require('../../lib/prisma.cjs');
 const {
   getConferenceDetails,
+  getRecording,
+  getTranscript,
+  getSmartNote,
   getOrCreateUserFolder,
   findFolderByName,
   createFolder,
@@ -215,6 +218,9 @@ async function processConference(conferenceId) {
     }
   }
 
+  // 2b. Resolver URLs dos artefatos via Meet API (Pub/Sub só envia resource_name, não o link)
+  await resolveArtifactUrls(conferenceId, mp.user_email);
+
   // 3. Garantir pasta no Drive
   const current = await prisma.eppMeetProcess.findUnique({ where: { conference_id: conferenceId } });
   if (!current.drive_folder_id) {
@@ -282,6 +288,71 @@ async function processConference(conferenceId) {
     has_all: hasAll,
     all_copied: allCopied,
   };
+}
+
+/**
+ * Resolve URLs dos artefatos via Meet API.
+ * O Pub/Sub só envia o resource_name (ex: conferenceRecords/.../recordings/xxx).
+ * Precisamos chamar getRecording/getTranscript/getSmartNote para obter o link real.
+ */
+async function resolveArtifactUrls(conferenceId, userEmail) {
+  const mp = await prisma.eppMeetProcess.findUnique({ where: { conference_id: conferenceId } });
+  if (!mp) return;
+
+  const updates = {};
+
+  // Recording
+  if (mp.has_recording && !mp.recording_original_link && mp.recording_resource_name) {
+    try {
+      const rec = await getRecording(mp.recording_resource_name, userEmail);
+      const url = rec?.driveDestination?.exportUri
+        || (rec?.driveDestination?.file ? `https://drive.google.com/file/d/${rec.driveDestination.file}/view` : null);
+      if (url) {
+        updates.recording_original_link = url;
+        console.log(`[worker] recording URL resolvida: ${url}`);
+      }
+    } catch (err) {
+      console.log(`[worker] falha ao resolver recording ${mp.recording_resource_name}: ${err.message}`);
+    }
+  }
+
+  // Transcript
+  if (mp.has_transcript && !mp.transcript_original_link && mp.transcript_resource_name) {
+    try {
+      const tr = await getTranscript(mp.transcript_resource_name, userEmail);
+      const url = tr?.docsDestination?.exportUri
+        || (tr?.docsDestination?.document ? `https://docs.google.com/document/d/${tr.docsDestination.document}/edit` : null);
+      if (url) {
+        updates.transcript_original_link = url;
+        console.log(`[worker] transcript URL resolvida: ${url}`);
+      }
+    } catch (err) {
+      console.log(`[worker] falha ao resolver transcript ${mp.transcript_resource_name}: ${err.message}`);
+    }
+  }
+
+  // Smart Note
+  if (mp.has_smart_note && !mp.smart_note_original_link && mp.smart_note_resource_name) {
+    try {
+      const sn = await getSmartNote(mp.smart_note_resource_name, userEmail);
+      const url = sn?.docsDestination?.exportUri
+        || (sn?.docsDestination?.document ? `https://docs.google.com/document/d/${sn.docsDestination.document}/view` : null);
+      if (url) {
+        updates.smart_note_original_link = url;
+        console.log(`[worker] smart_note URL resolvida: ${url}`);
+      }
+    } catch (err) {
+      console.log(`[worker] falha ao resolver smart_note ${mp.smart_note_resource_name}: ${err.message}`);
+    }
+  }
+
+  if (Object.keys(updates).length > 0) {
+    await prisma.eppMeetProcess.update({
+      where: { conference_id: conferenceId },
+      data: { ...updates, updated_at: new Date() },
+    });
+    console.log(`[worker] ${Object.keys(updates).length} URLs resolvidas para ${conferenceId}`);
+  }
 }
 
 async function tryCopyArtifact(mp, kind) {
