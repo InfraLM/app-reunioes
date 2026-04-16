@@ -17,6 +17,19 @@ const config = require('../lib/config');
 
 const MAX_MEETS_PER_RUN = 5;
 
+/**
+ * Converte email em nome de pasta no Drive.
+ * yuri.ribeiro@liberdademedicaedu.com.br → "Yuri Ribeiro"
+ * infra@liberdademedicaedu.com.br → "Infra"
+ */
+function emailToFolderName(email) {
+  const local = email.includes('@') ? email.split('@')[0] : email;
+  return local
+    .split('.')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(' ');
+}
+
 // Status finais (ciclo de vida pós-artefatos) que NÃO devem ser sobrescritos pelo worker
 const STATUS_POS_ENVIO = new Set([
   'webhook_enfileirado',
@@ -209,7 +222,9 @@ async function processConference(conferenceId) {
       const rootFolder = config.google.sharedFolderId;
       if (!rootFolder) throw new Error('GOOGLE_SHARED_DRIVE_FOLDER_ID não configurado');
 
-      const userFolder = await getOrCreateUserFolder(rootFolder, current.user_email, current.user_email);
+      const folderName = emailToFolderName(current.user_email);
+      console.log(`[worker] pasta do usuário: "${folderName}" (email: ${current.user_email})`);
+      const userFolder = await getOrCreateUserFolder(rootFolder, folderName, current.user_email);
       let meetFolder = await findFolderByName(userFolder.id, conferenceId, current.user_email);
       if (!meetFolder) {
         meetFolder = await createFolder(userFolder.id, conferenceId, current.user_email);

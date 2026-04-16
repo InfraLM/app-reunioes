@@ -327,14 +327,17 @@ async function createFolder(parentId, folderName, impersonatedEmail) {
 }
 
 /**
- * Retorna a pasta do usuário (usa o e-mail como nome) dentro da pasta raiz;
+ * Retorna a pasta do usuário (busca por folderName) dentro da pasta raiz;
  * cria se não existir. Retorna { id, name, webViewLink }.
+ * @param {string} parentId - ID da pasta raiz (GOOGLE_SHARED_DRIVE_FOLDER_ID)
+ * @param {string} folderName - Nome da pasta (ex: "Yuri Ribeiro", não o email)
+ * @param {string} impersonatedEmail - Email para DWD auth
  */
-async function getOrCreateUserFolder(parentId, userEmail, impersonatedEmail) {
-  const existing = await findFolderByName(parentId, userEmail, impersonatedEmail);
+async function getOrCreateUserFolder(parentId, folderName, impersonatedEmail) {
+  const existing = await findFolderByName(parentId, folderName, impersonatedEmail);
   if (existing) return existing;
-  logger.info(`Pasta do usuário ${userEmail} não encontrada em ${parentId}. Criando.`);
-  return createFolder(parentId, userEmail, impersonatedEmail);
+  logger.info(`Pasta "${folderName}" não encontrada em ${parentId}. Criando.`);
+  return createFolder(parentId, folderName, impersonatedEmail);
 }
 
 /**
