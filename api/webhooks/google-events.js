@@ -104,7 +104,7 @@ async function wakeProcessWorker() {
 
 export default async function handler(req, res) {
   const startTime = Date.now();
-  logger.info('[webhook] recebido', { method: req.method, headers: Object.keys(req.headers || {}) });
+  console.log('[webhook] POST recebido', req.method);
 
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
@@ -113,7 +113,7 @@ export default async function handler(req, res) {
   try {
     const { message } = req.body || {};
     if (!message) {
-      logger.warn('[webhook] body sem { message }', { body: JSON.stringify(req.body).slice(0, 500) });
+      console.log('[webhook] body sem { message }', JSON.stringify(req.body).slice(0, 300));
       return res.status(200).send('Ignored: invalid format');
     }
 
@@ -124,7 +124,7 @@ export default async function handler(req, res) {
     const ceTime = attributes['ce-time'] || null;
     const pubsubMessageId = message.messageId || message.message_id || null;
 
-    logger.info('[webhook] CloudEvent parse', { ceType, ceSubject, ceTime, pubsubMessageId });
+    console.log('[webhook] CloudEvent:', ceType, ceSubject, pubsubMessageId);
 
     let rawPayload = null;
     try {
@@ -141,26 +141,21 @@ export default async function handler(req, res) {
       ? getResourceDetails(rawPayload, event_type)
       : { link: null, resource_name: null };
 
-    logger.info('[webhook] classificação', {
-      event_type, event_category, conferenceId, userId, hasLink: !!link, hasResource: !!resource_name,
-    });
+    console.log('[webhook] tipo:', event_type, 'conf:', conferenceId, 'userId:', userId);
 
     // Resolver e-mail via Admin SDK (não bloqueia se falhar)
     let userEmail = null;
     if (ceSubject) {
       try {
         userEmail = await getUserEmailFromDirectory(ceSubject);
-        logger.info('[webhook] email resolvido', { userEmail });
+        console.log('[webhook] email resolvido:', userEmail);
       } catch (e) {
-        logger.warn('[webhook] falha ao resolver email', { ceSubject, error: e.message });
+        console.error('[webhook] falha email:', ceSubject, e.message);
       }
     }
 
     const isMonitored = !!userEmail && config.usersToMonitor.includes(userEmail);
-    logger.info('[webhook] monitoramento', { userEmail, isMonitored, monitoredCount: config.usersToMonitor.length });
-
-    // INSERT no tracking. UNIQUE em pubsub_message_id trata deduplicação.
-    logger.info('[webhook] antes do INSERT em epp_evento_track');
+    console.log('[webhook] monitored:', isMonitored, 'email:', userEmail, 'total:', config.usersToMonitor.length);
     try {
       await prisma.eppEventoTrack.create({
         data: {
@@ -181,40 +176,24 @@ export default async function handler(req, res) {
           attributes,
         },
       });
-      logger.info('[webhook] ✅ Evento inserido em epp_evento_track', {
-        conferenceId,
-        event_type,
-        userEmail,
-        isMonitored,
-      });
+      console.log('[webhook] ✅ INSERT OK', conferenceId, event_type, userEmail);
     } catch (dbErr) {
       if (dbErr.code === 'P2002') {
-        logger.info('[webhook] evento duplicado ignorado (UNIQUE violated)', { pubsubMessageId });
+        console.log('[webhook] duplicado ignorado', pubsubMessageId);
       } else {
-        logger.error('[webhook] erro ao inserir evento', {
-          error: dbErr.message,
-          code: dbErr.code,
-          meta: dbErr.meta,
-          stack: dbErr.stack?.split('\n').slice(0, 5).join('\n'),
-        });
+        console.error('[webhook] ❌ ERRO INSERT:', dbErr.code, dbErr.message, JSON.stringify(dbErr.meta || {}));
       }
     }
 
     if (isMonitored && conferenceId) {
-      logger.info('[webhook] disparando wake worker via QStash');
-      wakeProcessWorker().catch((e) => logger.warn('[webhook] wake falhou', { error: e.message }));
-    } else {
-      logger.info('[webhook] wake worker NÃO disparado', { isMonitored, hasConferenceId: !!conferenceId });
+      console.log('[webhook] wake worker QStash');
+      wakeProcessWorker().catch((e) => console.warn('[webhook] wake falhou', e.message));
     }
 
-    logger.info(`[webhook] concluído em ${Date.now() - startTime}ms`);
+    console.log(`[webhook] done ${Date.now() - startTime}ms`);
     return res.status(200).send('ok');
   } catch (error) {
-    logger.error('[webhook] ERRO FATAL', {
-      message: error.message,
-      name: error.name,
-      stack: error.stack?.split('\n').slice(0, 10).join('\n'),
-    });
+    console.error('[webhook] FATAL:', error.message, error.stack?.split('\n').slice(0, 5).join('\n'));
     return res.status(200).json({ error: 'handled', message: error.message });
   }
 }
