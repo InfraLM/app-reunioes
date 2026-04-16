@@ -17,7 +17,7 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
   ol: ({ children }) => <ol className="mb-2 last:mb-0 space-y-0.5 pl-1 list-decimal list-inside">{children}</ol>,
   li: ({ children }) => (
     <li className="flex gap-2 leading-relaxed">
-      <span className="text-yellow-400 mt-0.5 shrink-0">•</span>
+      <span className="text-red-500 mt-0.5 shrink-0">•</span>
       <span>{children}</span>
     </li>
   ),
@@ -28,19 +28,19 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="text-yellow-400 underline underline-offset-2 hover:text-yellow-300 break-all"
+      className="text-red-500 underline underline-offset-2 hover:text-red-400 break-all"
     >
       {children}
     </a>
   ),
   code: ({ children }) => (
-    <code className="bg-zinc-800 text-yellow-300 px-1.5 py-0.5 rounded text-xs font-mono">
+    <code className="bg-zinc-800 text-red-400 px-1.5 py-0.5 rounded text-xs font-mono">
       {children}
     </code>
   ),
   hr: () => <hr className="border-zinc-700 my-3" />,
   blockquote: ({ children }) => (
-    <blockquote className="border-l-2 border-yellow-400/50 pl-3 my-2 text-zinc-400 italic">
+    <blockquote className="border-l-2 border-red-600/50 pl-3 my-2 text-zinc-400 italic">
       {children}
     </blockquote>
   ),
@@ -206,8 +206,8 @@ export default function ChatIA() {
       <div className="flex-1 min-h-0 overflow-y-auto space-y-4 pb-4 pr-1">
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-5 text-center">
-            <div className="w-16 h-16 rounded-2xl bg-yellow-400/10 border border-yellow-400/20 flex items-center justify-center">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#eab308" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <div className="w-16 h-16 rounded-2xl bg-red-600/10 border border-red-600/30 flex items-center justify-center">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
               </svg>
             </div>
@@ -224,7 +224,7 @@ export default function ChatIA() {
                 <button
                   key={s}
                   onClick={() => sendMessage(s)}
-                  className="text-left px-4 py-3 bg-zinc-900 border border-zinc-800 hover:border-yellow-400/40 hover:bg-zinc-800/80 rounded-xl text-zinc-400 text-sm transition-all duration-150 cursor-pointer"
+                  className="text-left px-4 py-3 bg-zinc-900 border border-zinc-800 hover:border-red-600/40 hover:bg-zinc-800/80 rounded-xl text-zinc-400 text-sm transition-all duration-150 cursor-pointer"
                 >
                   {s}
                 </button>
@@ -245,14 +245,14 @@ export default function ChatIA() {
                 className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
                 {msg.role === 'assistant' && (
-                  <div className="w-8 h-8 rounded-full bg-yellow-400/15 border border-yellow-400/25 flex items-center justify-center shrink-0 mr-3 mt-1">
-                    <span className="text-yellow-400 text-xs font-bold">I</span>
+                  <div className="w-8 h-8 rounded-full bg-red-600/15 border border-red-600/30 flex items-center justify-center shrink-0 mr-3 mt-1">
+                    <span className="text-red-500 text-xs font-bold">I</span>
                   </div>
                 )}
                 <div
                   className={`max-w-[75%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${
                     msg.role === 'user'
-                      ? 'bg-yellow-400 text-black font-medium rounded-br-sm'
+                      ? 'bg-red-600 text-white font-medium rounded-br-sm'
                       : 'bg-zinc-900 border border-zinc-800 text-zinc-200 rounded-bl-sm'
                   }`}
                 >
@@ -279,7 +279,7 @@ export default function ChatIA() {
 
       {/* Input */}
       <div className="shrink-0 pt-3">
-        <div className="flex gap-3 items-end bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3 focus-within:border-yellow-400/40 transition-colors duration-150">
+        <div className="flex gap-3 items-end bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3 focus-within:border-red-600/40 transition-colors duration-150">
           <textarea
             ref={inputRef}
             value={input}
@@ -297,14 +297,14 @@ export default function ChatIA() {
           <button
             onClick={() => sendMessage()}
             disabled={!input.trim() || isStreaming}
-            className="w-9 h-9 rounded-xl bg-yellow-400 hover:bg-yellow-300 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center shrink-0 transition-all duration-150 active:scale-95"
+            className="w-9 h-9 rounded-xl bg-red-600 hover:bg-red-500 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center shrink-0 transition-all duration-150 active:scale-95"
           >
             <svg
               width="15"
               height="15"
               viewBox="0 0 24 24"
               fill="none"
-              stroke="black"
+              stroke="white"
               strokeWidth="2.5"
               strokeLinecap="round"
               strokeLinejoin="round"

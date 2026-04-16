@@ -6,22 +6,24 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  schemas  = ["lovable", "public"]
+  schemas  = ["lovable"]
 }
 
-// Tabela 1: Login de Usuários
+// ============================================================
+// Tabela: Usuários do app
+// ============================================================
 model AppsUsuarios {
   id           String    @id @default(uuid())
   nome         String?
   email        String?
   login        String?
-  senha        String? // Hash bcrypt
+  senha        String?
   cargo        String?
   ci           Boolean?  @default(false)
   pfo          Boolean?  @default(false)
   comercial    Boolean?  @default(false)
   ronda        Boolean?  @default(false)
-  reuniao      Boolean?  @default(false) // Permissão reuniões
+  reuniao      Boolean?  @default(false)
   data_criacao DateTime? @default(now()) @db.Date
   area         String?   @db.Text
 
@@ -29,10 +31,12 @@ model AppsUsuarios {
   @@schema("lovable")
 }
 
-// Tabela 2: Reuniões de Governança
+// ============================================================
+// Tabela: Reuniões de Governança (finalizadas, com links + ata)
+// ============================================================
 model EppReunioesGovernanca {
-  id                       String    @id @default(uuid())
-  conference_id            String    @unique // PK funcional
+  id                       String    @default(uuid())
+  conference_id            String    @id
   data_reuniao             DateTime? @db.Date
   hora_inicio              String?
   hora_fim                 String?
@@ -61,31 +65,181 @@ model EppReunioesGovernanca {
   resumo_executivo         String?   @db.Text
 
   @@map("epp_reunioes_governanca")
-  @@schema("public")
+  @@schema("lovable")
 }
 
-// Tabela 3: Rastreamento de Artefatos de Conferência (para ambiente serverless)
-model ConferenceArtifactTracking {
-  id                 String    @id @default(uuid())
-  conference_id      String    @unique // conferenceRecords/xxx
-  user_email         String? // Email do organizador
-  has_recording      Boolean   @default(false)
-  has_transcript     Boolean   @default(false)
-  has_smart_note     Boolean   @default(false)
-  recording_name     String?
-  transcript_name    String?
-  smart_note_name    String?
-  recording_url      String? // URL direta extraída do evento Pub/Sub (exportUri)
-  transcript_url     String?
-  smart_note_url     String?
-  first_event_at     DateTime  @default(now())
-  last_event_at      DateTime  @default(now())
-  timeout_at         DateTime? // Timeout para processar artefatos parciais (null enquanto no_artifact)
-  status             String    @default("no_artifact") // no_artifact, waiting, processing, complete, partial_complete, error, ignored
-  processed_at       DateTime?
-  created_at         DateTime  @default(now())
-  updated_at         DateTime  @updatedAt
+// ============================================================
+// Tabela: Reuniões agendadas (sincronizadas do Google Calendar)
+// ============================================================
+model EppReunioesAgendadas {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar(36)
+  event_id              String    @unique @db.VarChar(255)
+  titulo                String?   @db.VarChar(500)
+  descricao             String?   @db.Text
+  data_inicio           DateTime  @db.Timestamptz(6)
+  data_fim              DateTime  @db.Timestamptz(6)
+  organizador_email     String?   @db.VarChar(255)
+  organizador_nome      String?   @db.VarChar(255)
+  participantes_count   Int?      @default(0)
+  participantes_lista   String?   @db.Text
+  status                String?   @default("scheduled") @db.VarChar(50)
+  meet_link             String?   @db.VarChar(500)
+  localizacao           String?   @db.VarChar(500)
+  recorrencia           String?   @db.Text
+  evento_recorrente_id  String?   @db.VarChar(255)
+  criado_em             DateTime? @default(now()) @db.Timestamptz(6)
+  atualizado_em         DateTime? @default(now()) @db.Timestamptz(6)
+  sincronizado_em       DateTime? @default(now()) @db.Timestamptz(6)
 
-  @@map("epp_conference_artifact_tracking")
+  @@index([data_inicio(sort: Desc)], map: "idx_reunioes_agendadas_data_inicio")
+  @@index([event_id], map: "idx_reunioes_agendadas_event_id")
+  @@index([organizador_email], map: "idx_reunioes_agendadas_organizador")
+  @@index([status], map: "idx_reunioes_agendadas_status")
+  @@map("epp_reunioes_agendadas")
+  @@schema("lovable")
+}
+
+// ============================================================
+// Tabela: Log imutável de eventos do Pub/Sub
+// Cada evento recebido do Google Workspace Events API é registrado aqui
+// ============================================================
+model EppEventoTrack {
+  id                BigInt    @id @default(autoincrement())
+  pubsub_message_id String?   @db.VarChar(255)
+  ce_type           String    @db.VarChar(255)
+  ce_subject        String?   @db.VarChar(500)
+  event_type        String    @db.VarChar(50)  // started, ended, recording, transcript, smart_note, participant_join, unknown
+  event_category    String    @db.VarChar(30)  // lifecycle, artifact, participant, other
+  conference_id     String?   @db.VarChar(255)
+  meet_space_id     String?   @db.VarChar(255)
+  user_id           String?   @db.VarChar(100)
+  user_email        String?   @db.VarChar(255)
+  link              String?   @db.Text
+  resource_name     String?   @db.VarChar(500)
+  is_monitored      Boolean   @default(false)
+  event_timestamp   DateTime? @db.Timestamptz(6)
+  received_at       DateTime  @default(now()) @db.Timestamptz(6)
+  raw_payload       Json?     @db.JsonB
+  attributes        Json?     @db.JsonB
+
+  @@index([conference_id], map: "idx_evento_track_conference")
+  @@index([conference_id, received_at(sort: Desc)], map: "idx_evento_track_conf_time")
+  @@index([event_type], map: "idx_evento_track_event_type")
+  @@index([received_at(sort: Desc)], map: "idx_evento_track_received")
+  @@index([user_email], map: "idx_evento_track_user_email")
+  @@unique([pubsub_message_id], map: "idx_evento_track_msgid")
+  @@map("epp_evento_track")
+  @@schema("lovable")
+}
+
+// ============================================================
+// Tabela: Estado agregado por reunião + progresso do workflow
+// Worker lê epp_evento_track e atualiza este estado
+// ============================================================
+model EppMeetProcess {
+  conference_id            String    @id @db.VarChar(255)
+  user_email               String    @db.VarChar(255)
+  user_id                  String?   @db.VarChar(100)
+
+  meeting_title            String?   @db.VarChar(500)
+  meet_space_id            String?   @db.VarChar(255)
+  meeting_start_time       DateTime? @db.Timestamptz(6)
+  meeting_end_time         DateTime? @db.Timestamptz(6)
+
+  status                   String    @default("pending") @db.VarChar(30)  // pending, processing, complete, partial, error
+  first_event_at           DateTime  @default(now()) @db.Timestamptz(6)
+  last_event_at            DateTime  @default(now()) @db.Timestamptz(6)
+  error_message            String?   @db.Text
+
+  drive_folder_id          String?   @db.VarChar(255)
+  drive_folder_link        String?   @db.Text
+  drive_folder_created_at  DateTime? @db.Timestamptz(6)
+
+  has_recording            Boolean   @default(false)
+  recording_original_link  String?   @db.Text
+  recording_resource_name  String?   @db.VarChar(500)
+  recording_drive_file_id  String?   @db.VarChar(255)
+  recording_drive_link     String?   @db.Text
+  recording_copied_at      DateTime? @db.Timestamptz(6)
+  recording_error          String?   @db.Text
+
+  has_transcript           Boolean   @default(false)
+  transcript_original_link String?   @db.Text
+  transcript_resource_name String?   @db.VarChar(500)
+  transcript_drive_file_id String?   @db.VarChar(255)
+  transcript_drive_link    String?   @db.Text
+  transcript_copied_at     DateTime? @db.Timestamptz(6)
+  transcript_error         String?   @db.Text
+
+  has_smart_note           Boolean   @default(false)
+  smart_note_original_link String?   @db.Text
+  smart_note_resource_name String?   @db.VarChar(500)
+  smart_note_drive_file_id String?   @db.VarChar(255)
+  smart_note_drive_link    String?   @db.Text
+  smart_note_copied_at     DateTime? @db.Timestamptz(6)
+  smart_note_error         String?   @db.Text
+
+  webhook_sent             Boolean   @default(false)
+  webhook_sent_at          DateTime? @db.Timestamptz(6)
+  webhook_response         String?   @db.Text
+
+  created_at               DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at               DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@index([user_email], map: "idx_meet_process_user")
+  @@index([status], map: "idx_meet_process_status")
+  @@index([last_event_at(sort: Desc)], map: "idx_meet_process_last_event")
+  @@map("epp_meet_process")
+  @@schema("lovable")
+}
+
+// ============================================================
+// Tabela: Ciclo de vida pós-artefatos e fila de webhook
+// Status possíveis:
+//   artefatos_faltantes (🔴) | artefatos_completos (🟡) |
+//   webhook_enfileirado | webhook_enviando | webhook_enviado |
+//   webhook_erro | ata_gerada (🟢) | ignorado
+// ============================================================
+model EppMeetStatus {
+  conference_id            String    @id @db.VarChar(255)
+
+  status                   String    @default("artefatos_faltantes") @db.VarChar(40)
+
+  user_email               String    @db.VarChar(255)
+  user_id                  String?   @db.VarChar(100)
+  meeting_title            String?   @db.VarChar(500)
+  meet_space_id            String?   @db.VarChar(255)
+  meeting_start_time       DateTime? @db.Timestamptz(6)
+  meeting_end_time         DateTime? @db.Timestamptz(6)
+
+  has_recording            Boolean   @default(false)
+  has_transcript           Boolean   @default(false)
+  has_smart_note           Boolean   @default(false)
+
+  data_primeiro_artefato   DateTime? @db.Timestamptz(6)
+  data_ultimo_artefato     DateTime? @db.Timestamptz(6)
+  data_artefatos_completos DateTime? @db.Timestamptz(6)
+  data_ata_gerada          DateTime? @db.Timestamptz(6)
+  data_webhook_enfileirado DateTime? @db.Timestamptz(6)
+  data_webhook_enviado     DateTime? @db.Timestamptz(6)
+  data_ultimo_erro         DateTime? @db.Timestamptz(6)
+
+  webhook_scheduled_for    DateTime? @db.Timestamptz(6)
+  webhook_qstash_msg_id    String?   @db.VarChar(255)
+  webhook_attempt_count    Int       @default(0)
+  webhook_last_status_code Int?
+  webhook_last_response    String?   @db.Text
+  webhook_last_error       String?   @db.Text
+
+  queued_by                String?   @db.VarChar(255)
+  notes                    String?   @db.Text
+
+  created_at               DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at               DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@index([status], map: "idx_meet_status_status")
+  @@index([user_email], map: "idx_meet_status_user")
+  @@index([meeting_start_time(sort: Desc)], map: "idx_meet_status_start")
+  @@map("epp_meet_status")
   @@schema("lovable")
 }

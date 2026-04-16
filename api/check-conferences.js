@@ -6,45 +6,64 @@ const prisma = require('../lib/prisma.cjs');
 
 /**
  * GET /api/check-conferences
- * Debug: Verificar status de todas as conferências
+ * Debug: status agregado de todas as meets + últimos eventos recebidos.
  */
 export default async function handler(req, res) {
   try {
-    const allConferences = await prisma.conferenceArtifactTracking.findMany({
-      orderBy: {
-        created_at: 'desc'
-      }
-    });
+    const [meets, recentEvents] = await Promise.all([
+      prisma.eppMeetProcess.findMany({ orderBy: { last_event_at: 'desc' }, take: 200 }),
+      prisma.eppEventoTrack.findMany({
+        orderBy: { received_at: 'desc' },
+        take: 50,
+        select: {
+          id: true,
+          conference_id: true,
+          event_type: true,
+          event_category: true,
+          user_email: true,
+          is_monitored: true,
+          received_at: true,
+          link: true,
+        },
+      }),
+    ]);
 
-    const grouped = allConferences.reduce((acc, conf) => {
-      acc[conf.status] = acc[conf.status] || [];
-      acc[conf.status].push({
-        conference_id: conf.conference_id,
-        user_email: conf.user_email,
-        status: conf.status,
-        has_recording: conf.has_recording,
-        has_transcript: conf.has_transcript,
-        has_smart_note: conf.has_smart_note,
-        timeout_at: conf.timeout_at,
-        timeout_passed: new Date(conf.timeout_at) < new Date(),
-        first_event_at: conf.first_event_at,
-        created_at: conf.created_at
+    const grouped = meets.reduce((acc, m) => {
+      acc[m.status] = acc[m.status] || [];
+      acc[m.status].push({
+        conference_id: m.conference_id,
+        user_email: m.user_email,
+        status: m.status,
+        has_recording: m.has_recording,
+        has_transcript: m.has_transcript,
+        has_smart_note: m.has_smart_note,
+        drive_folder_link: m.drive_folder_link,
+        recording_drive_link: m.recording_drive_link,
+        transcript_drive_link: m.transcript_drive_link,
+        smart_note_drive_link: m.smart_note_drive_link,
+        webhook_sent: m.webhook_sent,
+        first_event_at: m.first_event_at,
+        last_event_at: m.last_event_at,
       });
       return acc;
     }, {});
 
     return res.status(200).json({
-      total: allConferences.length,
+      total_meets: meets.length,
       by_status: Object.keys(grouped).reduce((acc, status) => {
         acc[status] = grouped[status].length;
         return acc;
       }, {}),
-      details: grouped
+      meets: grouped,
+      recent_events: recentEvents.map((e) => ({
+        ...e,
+        id: e.id.toString(), // BigInt → string para JSON
+      })),
     });
   } catch (error) {
     return res.status(500).json({
       error: error.message,
-      stack: error.stack
+      stack: error.stack,
     });
   }
 }

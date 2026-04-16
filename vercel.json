@@ -10,7 +10,7 @@
       "destination": "/index.html"
     },
     {
-      "source": "/((?!api/).*)",
+      "source": "/((?!api/)(?!@)(?!__)(?!node_modules/)(?!src/)(?!assets/)(?!.*\\.[a-zA-Z0-9]+$).*)",
       "destination": "/index.html"
     }
   ]

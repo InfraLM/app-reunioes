@@ -59,7 +59,7 @@ export const reunioesService = {
   },
 };
 
-// Serviço de monitoramento (sem autenticação)
+// Serviço de monitoramento (sem autenticação — legado)
 export const monitorService = {
   status: async () => {
     const response = await axios.get('/api/status');
@@ -67,6 +67,52 @@ export const monitorService = {
   },
   enviarWebhook: async (conferenceId: string) => {
     const response = await axios.post(`/api/send-webhook/${conferenceId}`);
+    return response.data;
+  },
+  recent: async () => {
+    const response = await api.get('/meetings/recent');
+    return response.data;
+  },
+  live: async () => {
+    const response = await api.get('/meetings/live');
+    return response.data;
+  },
+};
+
+// Serviço do novo fluxo de meetings (status + fila de webhook)
+export const meetingsService = {
+  list: async (filter: 'todos' | 'em_aguardo' | 'ata_gerada' = 'todos') => {
+    const response = await api.get('/meetings/status', { params: { filter } });
+    return response.data;
+  },
+  queueWebhook: async (conferenceIds: string[]) => {
+    const response = await api.post('/meetings/queue-webhook', {
+      conference_ids: conferenceIds,
+    });
+    return response.data;
+  },
+};
+
+// Serviço de inscrições no Pub/Sub (Workspace Events API)
+export const subscriptionsService = {
+  status: async () => {
+    const response = await api.get('/subscriptions/status');
+    return response.data;
+  },
+  connect: async (email: string) => {
+    const response = await api.post('/subscriptions/connect', { email });
+    return response.data;
+  },
+  disconnect: async (email: string) => {
+    const response = await api.post('/subscriptions/disconnect', { email });
+    return response.data;
+  },
+  reconnect: async (email: string) => {
+    const response = await api.post('/subscriptions/reconnect', { email });
+    return response.data;
+  },
+  reconnectAll: async () => {
+    const response = await api.post('/subscriptions/reconnect-all');
     return response.data;
   },
 };

@@ -37,3 +37,17 @@ dist-ssr
 *.sw?
 .vercel
 .env*.local
+
+# Projeto antigo (referência, não versionar)
+exemplo/
+
+# Arquivos de teste e debug
+test-event.json
+database_atual.sql
+log_vercel_atual.json
+
+# Claude Code
+.claude/
+
+# MCP config (local)
+.mcp.json

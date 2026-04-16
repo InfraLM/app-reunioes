@@ -1,20 +1,21 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
-import { reunioesService } from '../lib/api';
-import type { Reuniao } from '../types';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { meetingsService } from '../lib/api';
+import type { MeetStatus, MeetLifecycleStatus } from '../types';
 import ReuniaoCard from '../components/Reunioes/ReuniaoCard';
 import ReuniaoModal from '../components/Reunioes/ReuniaoModal';
-import DateRangePicker, { type DateRange } from '../components/Reunioes/DateRangePicker';
 
-type SortBy = 'date_desc' | 'date_asc' | 'title_asc' | 'title_desc' | 'artifacts_desc';
-type ArtifactFilter = 'all' | 'complete' | 'partial' | 'none';
+type SortBy = 'date_desc' | 'date_asc' | 'title_asc' | 'title_desc';
+type StatusFilter = 'all' | MeetLifecycleStatus;
 
 const PAGE_SIZE = 18;
 
-const ARTIFACT_OPTS: { value: ArtifactFilter; label: string }[] = [
+const STATUS_OPTS: { value: StatusFilter; label: string }[] = [
   { value: 'all', label: 'Todos' },
-  { value: 'complete', label: '4/4' },
-  { value: 'partial', label: 'Parciais' },
-  { value: 'none', label: 'Sem artefatos' },
+  { value: 'ata_gerada', label: 'Ata gerada' },
+  { value: 'artefatos_completos', label: 'Completos' },
+  { value: 'artefatos_faltantes', label: 'Faltantes' },
+  { value: 'webhook_enfileirado', label: 'Na fila' },
+  { value: 'webhook_erro', label: 'Erro' },
 ];
 
 const SORT_OPTS: { value: SortBy; label: string }[] = [
@@ -22,16 +23,7 @@ const SORT_OPTS: { value: SortBy; label: string }[] = [
   { value: 'date_asc', label: '↑ Mais antigo' },
   { value: 'title_asc', label: 'A→Z Título' },
   { value: 'title_desc', label: 'Z→A Título' },
-  { value: 'artifacts_desc', label: '★ Mais artefatos' },
 ];
-
-function countArtifacts(r: Reuniao) {
-  return [r.link_gravacao, r.link_transcricao, r.link_anotacao, r.ata_link_download].filter(Boolean).length;
-}
-
-function toLocalDateStr(d: Date) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
 
 function getPageNums(current: number, total: number): (number | '...')[] {
   if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
@@ -40,330 +32,299 @@ function getPageNums(current: number, total: number): (number | '...')[] {
   return [1, '...', current - 1, current, current + 1, '...', total];
 }
 
-function fmtShort(d: Date | null) {
-  if (!d) return '';
-  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-}
-
 export default function ReunioesPage() {
-  const [reunioes, setReunioes] = useState<Reuniao[]>([]);
+  const [meetings, setMeetings] = useState<MeetStatus[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedReuniao, setSelectedReuniao] = useState<Reuniao | null>(null);
+  const [selected, setSelected] = useState<MeetStatus | null>(null);
 
-  // Filters & sort
   const [searchText, setSearchText] = useState('');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [sortBy, setSortBy] = useState<SortBy>('date_desc');
-  const [dateRange, setDateRange] = useState<DateRange>({ start: null, end: null });
-  const [artifactFilter, setArtifactFilter] = useState<ArtifactFilter>('all');
-  const [showDatePicker, setShowDatePicker] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const datePickerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      try {
-        const data = await reunioesService.listar({ limit: 100, offset: 0 });
-        setReunioes(data.data || []);
-      } catch (e) {
-        console.error('Erro ao carregar reuniões:', e);
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
+  const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
+
+  const load = useCallback(async () => {
+    try {
+      const res = await meetingsService.list('todos');
+      setMeetings(res.meetings || []);
+    } catch (e) {
+      console.error('Erro ao carregar meetings:', e);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  // Close date picker on outside click
   useEffect(() => {
-    if (!showDatePicker) return;
-    const handler = (e: MouseEvent) => {
-      if (datePickerRef.current && !datePickerRef.current.contains(e.target as Node)) {
-        setShowDatePicker(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [showDatePicker]);
+    load();
+    const id = setInterval(load, 30000); // atualiza a cada 30s
+    return () => clearInterval(id);
+  }, [load]);
 
-  // Reset page whenever filters change
-  useEffect(() => { setCurrentPage(1); }, [searchText, sortBy, dateRange, artifactFilter]);
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchText, statusFilter, sortBy]);
+
+  const handleCreateAta = async (conferenceId: string) => {
+    setActionLoading((p) => ({ ...p, [conferenceId]: true }));
+    try {
+      await meetingsService.queueWebhook([conferenceId]);
+      await load();
+    } catch (e) {
+      console.error('Erro ao enfileirar webhook:', e);
+    } finally {
+      setActionLoading((p) => {
+        const next = { ...p };
+        delete next[conferenceId];
+        return next;
+      });
+    }
+  };
 
   const filtered = useMemo(() => {
-    let r = [...reunioes];
-
+    let r = [...meetings];
     if (searchText.trim()) {
       const q = searchText.toLowerCase().trim();
-      r = r.filter(m =>
-        m.titulo_reuniao?.toLowerCase().includes(q) ||
-        m.responsavel?.toLowerCase().includes(q) ||
-        m.participantes_nomes?.toLowerCase().includes(q)
+      r = r.filter(
+        (m) =>
+          m.meeting_title?.toLowerCase().includes(q) ||
+          m.user_email?.toLowerCase().includes(q) ||
+          m.governanca?.titulo_reuniao?.toLowerCase().includes(q)
       );
     }
-
-    if (dateRange.start) {
-      const s = toLocalDateStr(dateRange.start);
-      r = r.filter(m => m.data_reuniao && m.data_reuniao.split('T')[0] >= s);
+    if (statusFilter !== 'all') {
+      r = r.filter((m) => m.status === statusFilter);
     }
-    if (dateRange.end) {
-      const e = toLocalDateStr(dateRange.end);
-      r = r.filter(m => m.data_reuniao && m.data_reuniao.split('T')[0] <= e);
-    }
-
-    if (artifactFilter === 'complete') r = r.filter(m => countArtifacts(m) === 4);
-    else if (artifactFilter === 'partial') r = r.filter(m => { const c = countArtifacts(m); return c > 0 && c < 4; });
-    else if (artifactFilter === 'none') r = r.filter(m => countArtifacts(m) === 0);
-
     r.sort((a, b) => {
       switch (sortBy) {
-        case 'date_asc': return (a.data_reuniao ?? '').localeCompare(b.data_reuniao ?? '');
-        case 'title_asc': return (a.titulo_reuniao ?? '').localeCompare(b.titulo_reuniao ?? '', 'pt');
-        case 'title_desc': return (b.titulo_reuniao ?? '').localeCompare(a.titulo_reuniao ?? '', 'pt');
-        case 'artifacts_desc': return countArtifacts(b) - countArtifacts(a);
-        default: return (b.data_reuniao ?? '').localeCompare(a.data_reuniao ?? '');
+        case 'date_asc':
+          return (a.meeting_start_time ?? '').localeCompare(b.meeting_start_time ?? '');
+        case 'title_asc':
+          return (a.meeting_title ?? '').localeCompare(b.meeting_title ?? '', 'pt');
+        case 'title_desc':
+          return (b.meeting_title ?? '').localeCompare(a.meeting_title ?? '', 'pt');
+        default:
+          return (b.meeting_start_time ?? '').localeCompare(a.meeting_start_time ?? '');
       }
     });
-
     return r;
-  }, [reunioes, searchText, dateRange, artifactFilter, sortBy]);
+  }, [meetings, searchText, statusFilter, sortBy]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paginated = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
-  const hasActiveFilters = !!(searchText || dateRange.start || artifactFilter !== 'all');
+
+  // summary
+  const summary = useMemo(() => {
+    const s = { total: meetings.length, ata_gerada: 0, completos: 0, faltantes: 0, outros: 0 };
+    for (const m of meetings) {
+      if (m.status === 'ata_gerada') s.ata_gerada++;
+      else if (m.status === 'artefatos_completos') s.completos++;
+      else if (m.status === 'artefatos_faltantes') s.faltantes++;
+      else s.outros++;
+    }
+    return s;
+  }, [meetings]);
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-28">
+        <div className="w-6 h-6 border-2 border-red-600 border-t-transparent rounded-full animate-spin mb-5" />
+        <p className="text-zinc-600 text-sm font-medium">Carregando reuniões...</p>
+      </div>
+    );
+  }
 
   return (
     <>
-      {/* Page header */}
       <div className="mb-6">
         <p className="text-xs font-bold text-zinc-600 uppercase tracking-[0.2em] mb-2">Histórico</p>
-        <div className="flex items-end justify-between">
+        <div className="flex items-end justify-between flex-wrap gap-3">
           <div>
-            <h1 className="text-4xl font-black text-white tracking-tight">
-              Reuniões de Governança
-            </h1>
-            {!loading && (
-              <p className="text-zinc-500 text-sm mt-2 font-normal">
-                {reunioes.length} {reunioes.length === 1 ? 'reunião armazenada' : 'reuniões armazenadas'}
-              </p>
-            )}
+            <h1 className="text-4xl font-black text-white tracking-tight">Reuniões</h1>
+            <p className="text-zinc-500 text-sm mt-2 font-normal">
+              {summary.total} reuniões · 🟢 {summary.ata_gerada} atas · 🟡 {summary.completos} completos · 🔴 {summary.faltantes} faltantes
+            </p>
           </div>
+          <button
+            onClick={load}
+            className="bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all"
+          >
+            Atualizar
+          </button>
         </div>
       </div>
 
-      {loading ? (
-        <div className="flex flex-col items-center justify-center py-28">
-          <div className="w-6 h-6 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin mb-5" />
-          <p className="text-zinc-600 text-sm font-medium">Carregando reuniões...</p>
+      {/* Filter bar */}
+      <div className="bg-[#111111] border border-zinc-800 rounded-2xl px-5 py-4 mb-6 flex flex-wrap gap-3 items-center">
+        <div className="relative flex-1 min-w-[220px]">
+          <svg
+            className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-600 pointer-events-none"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <input
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            placeholder="Buscar título, responsável..."
+            className="w-full pl-9 pr-4 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-red-600/60 focus:ring-1 focus:ring-red-600/20 transition-colors"
+          />
         </div>
-      ) : reunioes.length === 0 ? (
-        <div className="flex flex-col items-center justify-center text-center py-28">
-          <div className="w-14 h-14 bg-[#111111] border border-zinc-800 rounded-2xl flex items-center justify-center mb-5">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3f3f46" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-              <polyline points="14,2 14,8 20,8" />
-              <line x1="16" y1="13" x2="8" y2="13" />
-              <line x1="16" y1="17" x2="8" y2="17" />
-            </svg>
-          </div>
-          <p className="text-white font-bold text-base mb-2">Nenhuma reunião encontrada</p>
-          <p className="text-zinc-600 text-sm max-w-xs leading-relaxed font-normal">
-            As reuniões aparecerão aqui após serem processadas pelo sistema.
+
+        <div className="flex gap-1.5 flex-wrap">
+          {STATUS_OPTS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => setStatusFilter(opt.value)}
+              className={`px-3 py-2 rounded-xl text-xs font-semibold transition-colors whitespace-nowrap ${
+                statusFilter === opt.value
+                  ? 'bg-red-600 text-white'
+                  : 'bg-zinc-900 border border-zinc-800 text-zinc-500 hover:text-white hover:border-zinc-700'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="ml-auto">
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as SortBy)}
+            className="bg-zinc-900 border border-zinc-800 text-zinc-400 text-xs font-semibold rounded-xl px-3 py-2.5 focus:outline-none focus:border-red-600/60 cursor-pointer hover:text-white transition-colors"
+          >
+            {SORT_OPTS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="flex flex-col items-center justify-center text-center py-20">
+          <p className="text-white font-bold text-base mb-2">Nenhuma reunião</p>
+          <p className="text-zinc-600 text-sm max-w-[260px] leading-relaxed">
+            Nenhuma reunião corresponde aos filtros aplicados.
           </p>
         </div>
       ) : (
         <>
-          {/* ── Filter bar ── */}
-          <div className="bg-[#111111] border border-zinc-800 rounded-2xl px-5 py-4 mb-6 flex flex-wrap gap-3 items-center">
-
-            {/* Search */}
-            <div className="relative flex-1 min-w-[220px]">
-              <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-600 pointer-events-none" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
-              <input
-                value={searchText}
-                onChange={e => setSearchText(e.target.value)}
-                placeholder="Buscar título, responsável, participante..."
-                className="w-full pl-9 pr-9 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-yellow-400/60 focus:ring-1 focus:ring-yellow-400/20 transition-colors"
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {paginated.map((m) => (
+              <ReuniaoCard
+                key={m.conference_id}
+                meeting={m}
+                onClick={() => setSelected(m)}
+                onCreateAta={() => handleCreateAta(m.conference_id)}
+                actionLoading={actionLoading[m.conference_id]}
               />
-              {searchText && (
-                <button
-                  onClick={() => setSearchText('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-zinc-400 transition-colors"
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                  </svg>
-                </button>
-              )}
-            </div>
-
-            <div className="hidden sm:block w-px h-6 bg-zinc-800 flex-shrink-0" />
-
-            {/* Date range */}
-            <div className="relative flex-shrink-0" ref={datePickerRef}>
-              <button
-                onClick={() => setShowDatePicker(v => !v)}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium transition-colors whitespace-nowrap ${dateRange.start
-                  ? 'bg-yellow-400/10 border-yellow-400/30 text-yellow-400'
-                  : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700'
-                  }`}
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="4" width="18" height="18" rx="2" />
-                  <line x1="16" y1="2" x2="16" y2="6" />
-                  <line x1="8" y1="2" x2="8" y2="6" />
-                  <line x1="3" y1="10" x2="21" y2="10" />
-                </svg>
-                {dateRange.start
-                  ? `${fmtShort(dateRange.start)} – ${dateRange.end ? fmtShort(dateRange.end) : '...'}`
-                  : 'Período'
-                }
-                {dateRange.start && (
-                  <span
-                    onClick={e => { e.stopPropagation(); setDateRange({ start: null, end: null }); }}
-                    className="ml-1 text-yellow-400/60 hover:text-yellow-400 transition-colors"
-                  >
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
-                  </span>
-                )}
-              </button>
-              {showDatePicker && (
-                <div className="absolute top-full mt-2 left-0 z-50">
-                  <DateRangePicker
-                    value={dateRange}
-                    onChange={setDateRange}
-                    onClose={() => setShowDatePicker(false)}
-                  />
-                </div>
-              )}
-            </div>
-
-            <div className="hidden sm:block w-px h-6 bg-zinc-800 flex-shrink-0" />
-
-            {/* Artifact filter pills */}
-            <div className="flex gap-1.5 flex-shrink-0">
-              {ARTIFACT_OPTS.map(opt => (
-                <button
-                  key={opt.value}
-                  onClick={() => setArtifactFilter(opt.value)}
-                  className={`px-3 py-2 rounded-xl text-xs font-semibold transition-colors whitespace-nowrap ${artifactFilter === opt.value
-                    ? 'bg-yellow-400 text-black'
-                    : 'bg-zinc-900 border border-zinc-800 text-zinc-500 hover:text-white hover:border-zinc-700'
-                    }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-
-            {/* Sort – pushed to the right */}
-            <div className="ml-auto flex-shrink-0 relative">
-              <select
-                value={sortBy}
-                onChange={e => setSortBy(e.target.value as SortBy)}
-                className="appearance-none bg-zinc-900 border border-zinc-800 text-zinc-400 text-xs font-semibold rounded-xl pl-3 pr-8 py-2.5 focus:outline-none focus:border-yellow-400/60 cursor-pointer hover:border-zinc-700 hover:text-white transition-colors"
-              >
-                {SORT_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-              <svg className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-600 pointer-events-none" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </div>
+            ))}
           </div>
 
-          {/* No filter results */}
-          {filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center text-center py-20">
-              <div className="w-12 h-12 bg-[#111111] border border-zinc-800 rounded-2xl flex items-center justify-center mb-4">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3f3f46" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-                </svg>
-              </div>
-              <p className="text-white font-bold text-base mb-2">Nenhum resultado</p>
-              <p className="text-zinc-600 text-sm max-w-[260px] leading-relaxed">
-                Nenhuma reunião corresponde aos filtros aplicados.
-              </p>
-              {hasActiveFilters && (
+          {totalPages > 1 && (
+            <div className="mt-10 flex flex-col items-center gap-3">
+              <div className="flex items-center gap-1.5">
                 <button
-                  onClick={() => { setSearchText(''); setDateRange({ start: null, end: null }); setArtifactFilter('all'); }}
-                  className="mt-4 px-4 py-2 text-xs font-bold text-yellow-400 border border-yellow-400/30 rounded-xl hover:bg-yellow-400/10 transition-colors"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="w-9 h-9 flex items-center justify-center rounded-xl text-zinc-500 hover:text-white hover:bg-zinc-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 >
-                  Limpar filtros
+                  ‹
                 </button>
-              )}
-            </div>
-          ) : (
-            <>
-              {/* Cards grid */}
-              <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-                {paginated.map(reuniao => (
-                  <ReuniaoCard
-                    key={reuniao.id}
-                    reuniao={reuniao}
-                    onClick={() => setSelectedReuniao(reuniao)}
-                  />
-                ))}
+                {getPageNums(currentPage, totalPages).map((page, i) =>
+                  page === '...' ? (
+                    <span key={`e${i}`} className="w-9 h-9 flex items-center justify-center text-zinc-700 text-sm">
+                      …
+                    </span>
+                  ) : (
+                    <button
+                      key={page}
+                      onClick={() => setCurrentPage(page as number)}
+                      className={`w-9 h-9 rounded-xl text-sm font-bold transition-colors ${
+                        currentPage === page ? 'bg-red-600 text-white' : 'text-zinc-500 hover:text-white hover:bg-zinc-800'
+                      }`}
+                    >
+                      {page}
+                    </button>
+                  )
+                )}
+                <button
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="w-9 h-9 flex items-center justify-center rounded-xl text-zinc-500 hover:text-white hover:bg-zinc-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                >
+                  ›
+                </button>
               </div>
-
-              {/* Pagination */}
-              {totalPages > 1 && (
-                <div className="mt-10 flex flex-col items-center gap-3">
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                      disabled={currentPage === 1}
-                      className="w-9 h-9 flex items-center justify-center rounded-xl text-zinc-500 hover:text-white hover:bg-zinc-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="15 18 9 12 15 6" />
-                      </svg>
-                    </button>
-
-                    {getPageNums(currentPage, totalPages).map((page, i) =>
-                      page === '...'
-                        ? <span key={`e${i}`} className="w-9 h-9 flex items-center justify-center text-zinc-700 text-sm select-none">…</span>
-                        : <button
-                          key={page}
-                          onClick={() => setCurrentPage(page as number)}
-                          className={`w-9 h-9 flex items-center justify-center rounded-xl text-sm font-bold transition-colors ${currentPage === page
-                            ? 'bg-yellow-400 text-black'
-                            : 'text-zinc-500 hover:text-white hover:bg-zinc-800'
-                            }`}
-                        >
-                          {page}
-                        </button>
-                    )}
-
-                    <button
-                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                      disabled={currentPage === totalPages}
-                      className="w-9 h-9 flex items-center justify-center rounded-xl text-zinc-500 hover:text-white hover:bg-zinc-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="9 18 15 12 9 6" />
-                      </svg>
-                    </button>
-                  </div>
-
-                  <p className="text-zinc-700 text-xs">
-                    {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, filtered.length)} de {filtered.length} reuniões
-                  </p>
-                </div>
-              )}
-            </>
+              <p className="text-zinc-700 text-xs">
+                {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, filtered.length)} de {filtered.length}
+              </p>
+            </div>
           )}
         </>
       )}
 
-      {selectedReuniao && (
-        <ReuniaoModal
-          reuniao={selectedReuniao}
-          onClose={() => setSelectedReuniao(null)}
-        />
+      {selected && selected.governanca && (
+        <ReuniaoModal reuniao={selected.governanca} onClose={() => setSelected(null)} />
+      )}
+      {selected && !selected.governanca && (
+        <MinimalDetailsModal meeting={selected} onClose={() => setSelected(null)} />
       )}
     </>
+  );
+}
+
+function MinimalDetailsModal({ meeting, onClose }: { meeting: MeetStatus; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/70 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="w-full max-w-lg bg-[#111111] border border-zinc-800 rounded-2xl p-6 max-h-[85vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-4 mb-4">
+          <h2 className="text-xl font-black text-white">{meeting.meeting_title || 'Reunião'}</h2>
+          <button onClick={onClose} className="text-zinc-500 hover:text-white">✕</button>
+        </div>
+        <div className="space-y-3 text-sm">
+          <Row label="Status" value={meeting.status} />
+          <Row label="Organizador" value={meeting.user_email} />
+          <Row label="Conference ID" value={meeting.conference_id} mono />
+          {meeting.meeting_start_time && <Row label="Início" value={new Date(meeting.meeting_start_time).toLocaleString('pt-BR')} />}
+          {meeting.meeting_end_time && <Row label="Fim" value={new Date(meeting.meeting_end_time).toLocaleString('pt-BR')} />}
+          <Row label="Gravação" value={meeting.has_recording ? '✓' : '—'} />
+          <Row label="Transcrição" value={meeting.has_transcript ? '✓' : '—'} />
+          <Row label="Smart Notes" value={meeting.has_smart_note ? '✓' : '—'} />
+          {meeting.drive_folder_link && (
+            <a href={meeting.drive_folder_link} target="_blank" rel="noreferrer" className="block text-red-500 underline text-xs break-all">
+              Abrir pasta no Drive
+            </a>
+          )}
+          {meeting.webhook_last_error && (
+            <div className="p-3 rounded-xl bg-red-950/40 border border-red-800/60 text-red-400 text-xs">
+              <strong>Último erro:</strong> {meeting.webhook_last_error}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="flex justify-between gap-3">
+      <span className="text-zinc-500 text-xs font-semibold">{label}</span>
+      <span className={`text-zinc-300 text-xs ${mono ? 'font-mono' : ''} break-all text-right`}>{value}</span>
+    </div>
   );
 }

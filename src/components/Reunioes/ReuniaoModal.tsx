@@ -279,7 +279,7 @@ export default function ReuniaoModal({ reuniao, onClose }: Props) {
                 <ArtifactLink href={reuniao.link_anotacao} label="Anotações"   color="text-purple-400 bg-purple-950/60 border-purple-800 hover:bg-purple-900/50" />
               )}
               {reuniao.ata_link_download && (
-                <ArtifactLink href={reuniao.ata_link_download} label="Ata"      color="text-yellow-400 bg-yellow-950/60 border-yellow-800 hover:bg-yellow-900/50" isDownload downloadFileName={getAtaFileName()} />
+                <ArtifactLink href={reuniao.ata_link_download} label="Ata"      color="text-red-400    bg-red-950/60    border-red-800    hover:bg-red-900/50" isDownload downloadFileName={getAtaFileName()} />
               )}
               {!reuniao.link_gravacao &&
                 !reuniao.link_transcricao &&
@@ -346,7 +346,7 @@ export default function ReuniaoModal({ reuniao, onClose }: Props) {
               <ul className="space-y-2.5">
                 {itensPauta.map((item, i) => (
                   <li key={i} className="flex items-start gap-4 text-sm text-zinc-400 font-normal">
-                    <span className="text-yellow-400 font-black text-xs mt-0.5 flex-shrink-0 w-5">
+                    <span className="text-red-500 font-black text-xs mt-0.5 flex-shrink-0 w-5">
                       {String(i + 1).padStart(2, '0')}
                     </span>
                     {item}

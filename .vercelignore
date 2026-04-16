@@ -1,25 +1,26 @@
-# Backend source files (não são necessários no deploy, apenas os endpoints em /api)
-backend/src/index.js
-backend/src/services/subscription.js
-backend/src/services/events.js
-backend/src/utils/debug-subscriber.js
-backend/src/utils/test-permissions.js
-backend/src/utils/check-google.js
+# Projeto antigo (não necessário no deploy)
+exemplo/
 
-# Node modules (será reinstalado)
+# Arquivos de teste e debug
+test-event.json
+database_atual.sql
+log_vercel_atual.json
+
+# Claude Code
+.claude/
+
+# MCP config
+.mcp.json
+
+# Node modules (reinstalados no build)
 node_modules
-backend/node_modules
 
 # Arquivos de desenvolvimento
 .env
-.env.local
+.env.*
 *.log
 .DS_Store
 
-# Arquivos de build do backend (não necessários)
-backend/dist
-backend/*.log
-
-# Arquivos do Git
+# Git
 .git
 .gitignore

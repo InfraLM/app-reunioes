@@ -66,7 +66,7 @@ export default async function handler(req, res) {
 
     // Fetch reunião
     const reuniao = await prisma.eppReunioesGovernanca.findUnique({
-      where: { id },
+      where: { conference_id: id },
     });
 
     if (!reuniao) {

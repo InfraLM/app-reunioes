@@ -1,7 +1,14 @@
 const { google } = require('googleapis');
-const { ConferenceRecordsServiceClient } = require('@google-apps/meet').v2;
 const logger = require('./logger');
 const config = require('./config');
+
+// Lazy-load do SDK @google-apps/meet (tem binding gRPC que quebra em alguns ambientes)
+let _meetSdk = null;
+function loadMeetSdk() {
+  if (_meetSdk) return _meetSdk;
+  _meetSdk = require('@google-apps/meet').v2;
+  return _meetSdk;
+}
 
 // ============================================================
 // AUTENTICAÇÃO
@@ -42,6 +49,7 @@ function getAdminAuthClient() {
  */
 function getMeetClient(impersonatedEmail) {
   const auth = getAuthClientForUser(impersonatedEmail);
+  const { ConferenceRecordsServiceClient } = loadMeetSdk();
   return new ConferenceRecordsServiceClient({ authClient: auth });
 }
 
@@ -257,8 +265,6 @@ async function copyFileToSharedFolderAndGetLink(fileId, impersonatedEmail, share
   }
   try {
     const drive = getDriveClientForUser(impersonatedEmail);
-
-    // 1. Copiar o arquivo para a pasta destino
     const copyResponse = await drive.files.copy({
       fileId,
       requestBody: { parents: [sharedFolderId] },
@@ -266,24 +272,121 @@ async function copyFileToSharedFolderAndGetLink(fileId, impersonatedEmail, share
       supportsAllDrives: true,
     });
     const copiedFile = copyResponse.data;
-    logger.info(`File ${fileId} copied to folder ${sharedFolderId}. New file ID: ${copiedFile.id}`);
-
-    // 2. Definir permissão pública (qualquer pessoa com o link pode visualizar)
     await drive.permissions.create({
       fileId: copiedFile.id,
       requestBody: { role: 'reader', type: 'anyone' },
       supportsAllDrives: true,
     });
-    logger.info(`Permissions set for copied file ${copiedFile.id}: anyone with link can view.`);
-
     return copiedFile.webViewLink;
   } catch (error) {
     logger.error(`Error copying file ${fileId} to shared folder ${sharedFolderId}:`, error.response?.data || error.message);
-    if (error.code === 403 || error.code === 404) {
-      logger.error(`Verifique se o usuário '${impersonatedEmail}' tem acesso de Editor na pasta '${sharedFolderId}'.`);
-    }
     return null;
   }
+}
+
+/**
+ * Escapa aspas simples para uso em queries do Drive (q= parameter).
+ */
+function escapeDriveQuery(value) {
+  return String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+/**
+ * Busca uma pasta filha pelo nome dentro de uma pasta pai.
+ * Retorna o fileId da pasta encontrada, ou null.
+ */
+async function findFolderByName(parentId, folderName, impersonatedEmail) {
+  const drive = getDriveClientForUser(impersonatedEmail);
+  const q = `'${escapeDriveQuery(parentId)}' in parents and name = '${escapeDriveQuery(folderName)}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
+  const { data } = await drive.files.list({
+    q,
+    fields: 'files(id,name,webViewLink)',
+    pageSize: 1,
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
+  });
+  return data.files?.[0] || null;
+}
+
+/**
+ * Cria uma pasta filha dentro de uma pasta pai. Retorna { id, webViewLink, name }.
+ */
+async function createFolder(parentId, folderName, impersonatedEmail) {
+  const drive = getDriveClientForUser(impersonatedEmail);
+  const { data } = await drive.files.create({
+    requestBody: {
+      name: folderName,
+      mimeType: 'application/vnd.google-apps.folder',
+      parents: [parentId],
+    },
+    fields: 'id,name,webViewLink',
+    supportsAllDrives: true,
+  });
+  logger.info(`Pasta criada: ${folderName} (id=${data.id}) em ${parentId}`);
+  return data;
+}
+
+/**
+ * Retorna a pasta do usuário (usa o e-mail como nome) dentro da pasta raiz;
+ * cria se não existir. Retorna { id, name, webViewLink }.
+ */
+async function getOrCreateUserFolder(parentId, userEmail, impersonatedEmail) {
+  const existing = await findFolderByName(parentId, userEmail, impersonatedEmail);
+  if (existing) return existing;
+  logger.info(`Pasta do usuário ${userEmail} não encontrada em ${parentId}. Criando.`);
+  return createFolder(parentId, userEmail, impersonatedEmail);
+}
+
+/**
+ * Copia um arquivo para uma pasta específica. Define permissão "anyone reader".
+ * Retorna { id, webViewLink, name } ou lança erro.
+ */
+async function copyFileToFolder(fileId, destinationFolderId, newName, impersonatedEmail) {
+  const drive = getDriveClientForUser(impersonatedEmail);
+  const requestBody = { parents: [destinationFolderId] };
+  if (newName) requestBody.name = newName;
+
+  const { data } = await drive.files.copy({
+    fileId,
+    requestBody,
+    fields: 'id,name,webViewLink,mimeType',
+    supportsAllDrives: true,
+  });
+
+  try {
+    await drive.permissions.create({
+      fileId: data.id,
+      requestBody: { role: 'reader', type: 'anyone' },
+      supportsAllDrives: true,
+    });
+  } catch (permErr) {
+    logger.warn(`Falha ao setar permissão anyone em ${data.id}: ${permErr.message}`);
+  }
+  return data;
+}
+
+/**
+ * Extrai o fileId de URLs do Drive ou Docs.
+ * Suporta formatos:
+ *   - https://drive.google.com/file/d/FILE_ID/view
+ *   - https://docs.google.com/document/d/FILE_ID/edit
+ *   - https://drive.google.com/open?id=FILE_ID
+ *   - FILE_ID puro
+ */
+function extractFileIdFromDriveUrl(url) {
+  if (!url) return null;
+  if (!url.startsWith('http')) return url;
+
+  const dMatch = url.match(/\/d\/([a-zA-Z0-9_-]{10,})/);
+  if (dMatch) return dMatch[1];
+
+  const idMatch = url.match(/[?&]id=([a-zA-Z0-9_-]{10,})/);
+  if (idMatch) return idMatch[1];
+
+  const resourceKeyMatch = url.match(/\/document\/([a-zA-Z0-9_-]{10,})/);
+  if (resourceKeyMatch) return resourceKeyMatch[1];
+
+  return null;
 }
 
 module.exports = {
@@ -296,4 +399,9 @@ module.exports = {
   listConferenceSmartNotes,
   getUserEmailFromDirectory,
   copyFileToSharedFolderAndGetLink,
+  findFolderByName,
+  createFolder,
+  getOrCreateUserFolder,
+  copyFileToFolder,
+  extractFileIdFromDriveUrl,
 };

@@ -1,8 +1,10 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Sidebar from '../components/Layout/Sidebar';
-import ProcessamentoPage from './Processamento';
+import AoVivoPage from './Processamento';
 import ReunioesPage from './Reunioes';
+import RecentesPage from './EmAguardo';
 import ChatIAPage from './ChatIA';
+import StatusPage from './Status';
 
 export default function Dashboard() {
   return (
@@ -11,10 +13,12 @@ export default function Dashboard() {
       <main style={{ flex: 1, overflowY: 'auto' }}>
         <div className="max-w-[1280px] mx-auto px-6 sm:px-8 lg:px-10 py-10">
           <Routes>
-            <Route path="processamento" element={<ProcessamentoPage />} />
+            <Route path="ao-vivo" element={<AoVivoPage />} />
             <Route path="reunioes" element={<ReunioesPage />} />
+            <Route path="recentes" element={<RecentesPage />} />
             <Route path="chat-ia" element={<ChatIAPage />} />
-            <Route path="*" element={<Navigate to="reunioes" replace />} />
+            <Route path="status" element={<StatusPage />} />
+            <Route path="*" element={<Navigate to="ao-vivo" replace />} />
           </Routes>
         </div>
       </main>

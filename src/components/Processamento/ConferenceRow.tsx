@@ -7,7 +7,7 @@ interface Props {
 }
 
 const statusConfig = {
-  waiting: { label: 'Aguardando', bg: 'bg-yellow-950/60', text: 'text-yellow-400', dot: 'bg-yellow-400', border: 'border-yellow-800/60' },
+  waiting: { label: 'Aguardando', bg: 'bg-amber-950/60', text: 'text-amber-400', dot: 'bg-amber-400', border: 'border-amber-800/60' },
   processing: { label: 'Processando', bg: 'bg-blue-950/60', text: 'text-blue-400', dot: 'bg-blue-400', border: 'border-blue-800/60' },
   complete: { label: 'Concluído', bg: 'bg-green-950/60', text: 'text-green-400', dot: 'bg-green-400', border: 'border-green-800/60' },
   error: { label: 'Erro', bg: 'bg-red-950/60', text: 'text-red-400', dot: 'bg-red-400', border: 'border-red-800/60' },
@@ -74,7 +74,7 @@ export default function ConferenceRow({ conference, removeAt }: Props) {
 
       {/* Conferência & organizador */}
       <td className="px-7 py-5">
-        <p className="font-mono text-yellow-400 text-xs font-bold truncate max-w-[220px] mb-2">
+        <p className="font-mono text-red-500 text-xs font-bold truncate max-w-[220px] mb-2">
           {conference.id}
         </p>
         <p className="text-white text-sm font-medium mb-1.5">{conference.userEmail || 'Desconhecido'}</p>

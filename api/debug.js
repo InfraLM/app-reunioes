@@ -16,7 +16,10 @@ export default async function handler(req, res) {
       models: {
         appsUsuarios: typeof prisma.appsUsuarios,
         eppReunioesGovernanca: typeof prisma.eppReunioesGovernanca,
-        conferenceArtifactTracking: typeof prisma.conferenceArtifactTracking,
+        eppReunioesTodas: typeof prisma.eppReunioesTodas,
+        eppReunioesAgendadas: typeof prisma.eppReunioesAgendadas,
+        eppEventoTrack: typeof prisma.eppEventoTrack,
+        eppMeetProcess: typeof prisma.eppMeetProcess,
       },
       env: {
         DATABASE_URL: !!process.env.DATABASE_URL,

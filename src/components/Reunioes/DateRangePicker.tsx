@@ -81,7 +81,7 @@ function MonthGrid({
               {/* Range band */}
               {showBand && (
                 <div
-                  className="absolute inset-y-[3px] bg-yellow-400/15 pointer-events-none"
+                  className="absolute inset-y-[3px] bg-red-600/15 pointer-events-none"
                   style={{
                     left: isStart ? '50%' : 0,
                     right: isEnd ? '50%' : 0,
@@ -93,7 +93,7 @@ function MonthGrid({
                 className={`relative z-10 w-7 h-7 flex items-center justify-center rounded-full text-xs select-none
                   ${outside ? 'pointer-events-none' : 'cursor-pointer'}
                   ${(isStart || isEnd)
-                    ? 'bg-yellow-400 text-black font-bold'
+                    ? 'bg-red-600 text-white font-bold'
                     : inRange
                       ? 'text-zinc-200 font-medium'
                       : outside
@@ -174,13 +174,13 @@ export default function DateRangePicker({ value, onChange, onClose }: Props) {
     <div className="bg-[#111111] border border-zinc-800 rounded-2xl shadow-2xl p-5" style={{ width: 'max-content' }}>
       {/* Range display */}
       <div className="flex items-center justify-center gap-2.5 mb-5 px-5 py-2.5 bg-zinc-900/80 border border-zinc-800 rounded-xl">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#eab308" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <rect x="3" y="4" width="18" height="18" rx="2" />
           <line x1="16" y1="2" x2="16" y2="6" />
           <line x1="8" y1="2" x2="8" y2="6" />
           <line x1="3" y1="10" x2="21" y2="10" />
         </svg>
-        <span className="text-yellow-400 text-sm font-bold font-mono tabular-nums">
+        <span className="text-red-500 text-sm font-bold font-mono tabular-nums">
           {fmt(tempStart)} — {fmt(tempEnd)}
         </span>
       </div>
@@ -237,7 +237,7 @@ export default function DateRangePicker({ value, onChange, onClose }: Props) {
           </button>
           <button
             onClick={() => { onChange({ start: tempStart, end: tempEnd }); onClose(); }}
-            className="px-5 py-2 bg-yellow-400 hover:bg-yellow-300 text-black text-sm font-bold rounded-xl transition-colors"
+            className="px-5 py-2 bg-red-600 hover:bg-red-500 text-white text-sm font-bold rounded-xl transition-colors"
           >
             Aplicar
           </button>
