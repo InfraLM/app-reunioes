@@ -10,6 +10,7 @@ const {
   getRecording,
   getTranscript,
   getSmartNote,
+  listConferenceSmartNotes,
   getOrCreateUserFolder,
   findFolderByName,
   createFolder,
@@ -331,18 +332,44 @@ async function resolveArtifactUrls(conferenceId, userEmail) {
     }
   }
 
-  // Smart Note
-  if (mp.has_smart_note && !mp.smart_note_original_link && mp.smart_note_resource_name) {
-    try {
-      const sn = await getSmartNote(mp.smart_note_resource_name, userEmail);
-      const url = sn?.docsDestination?.exportUri
-        || (sn?.docsDestination?.document ? `https://docs.google.com/document/d/${sn.docsDestination.document}/view` : null);
-      if (url) {
-        updates.smart_note_original_link = url;
-        console.log(`[worker] smart_note URL resolvida: ${url}`);
+  // Smart Note — v2beta pode não retornar docsDestination, então tenta getSmartNote + fallback listConferenceSmartNotes
+  if (mp.has_smart_note && !mp.smart_note_original_link) {
+    let snUrl = null;
+
+    // Tentativa 1: getSmartNote direto (v2beta)
+    if (mp.smart_note_resource_name) {
+      try {
+        const sn = await getSmartNote(mp.smart_note_resource_name, userEmail);
+        console.log(`[worker] getSmartNote response:`, JSON.stringify(sn).slice(0, 500));
+        snUrl = sn?.docsDestination?.exportUri
+          || (sn?.docsDestination?.document ? `https://docs.google.com/document/d/${sn.docsDestination.document}/view` : null);
+      } catch (err) {
+        console.log(`[worker] getSmartNote falhou: ${err.message}`);
       }
-    } catch (err) {
-      console.log(`[worker] falha ao resolver smart_note ${mp.smart_note_resource_name}: ${err.message}`);
+    }
+
+    // Tentativa 2: listConferenceSmartNotes (lista todas do conference e pega a primeira com URL)
+    if (!snUrl) {
+      try {
+        const confId = conferenceId;
+        const smartNotes = await listConferenceSmartNotes(confId, userEmail);
+        console.log(`[worker] listSmartNotes retornou ${smartNotes?.length || 0} items`);
+        for (const sn of (smartNotes || [])) {
+          console.log(`[worker] smartNote item:`, JSON.stringify(sn).slice(0, 500));
+          const url = sn?.docsDestination?.exportUri
+            || (sn?.docsDestination?.document ? `https://docs.google.com/document/d/${sn.docsDestination.document}/view` : null);
+          if (url) { snUrl = url; break; }
+        }
+      } catch (err) {
+        console.log(`[worker] listSmartNotes falhou: ${err.message}`);
+      }
+    }
+
+    if (snUrl) {
+      updates.smart_note_original_link = snUrl;
+      console.log(`[worker] smart_note URL resolvida: ${snUrl}`);
+    } else {
+      console.log(`[worker] smart_note: nenhuma URL encontrada para ${conferenceId}`);
     }
   }
 
