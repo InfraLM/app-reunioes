@@ -303,7 +303,7 @@ async function resolveArtifactUrls(conferenceId, userEmail) {
   // Se meet_process não tem resource_name, buscar direto do evento_track (raw_payload)
   if (mp.has_recording && !mp.recording_resource_name) {
     const evt = await prisma.eppEventoTrack.findFirst({
-      where: { conference_id: conferenceId, event_type: 'recording', is_monitored: true },
+      where: { conference_id: conferenceId, event_type: 'recording' },
       select: { resource_name: true, raw_payload: true },
     });
     const name = evt?.resource_name || evt?.raw_payload?.recording?.name;
@@ -315,7 +315,7 @@ async function resolveArtifactUrls(conferenceId, userEmail) {
   }
   if (mp.has_transcript && !mp.transcript_resource_name) {
     const evt = await prisma.eppEventoTrack.findFirst({
-      where: { conference_id: conferenceId, event_type: 'transcript', is_monitored: true },
+      where: { conference_id: conferenceId, event_type: 'transcript' },
       select: { resource_name: true, raw_payload: true },
     });
     const name = evt?.resource_name || evt?.raw_payload?.transcript?.name;
@@ -327,9 +327,10 @@ async function resolveArtifactUrls(conferenceId, userEmail) {
   }
   if (mp.has_smart_note && !mp.smart_note_resource_name) {
     const evt = await prisma.eppEventoTrack.findFirst({
-      where: { conference_id: conferenceId, event_type: 'smart_note', is_monitored: true },
-      select: { resource_name: true, raw_payload: true },
+      where: { conference_id: conferenceId, event_type: 'smart_note' },
+      select: { resource_name: true, raw_payload: true, is_monitored: true },
     });
+    console.log(`[worker] sn event found: ${!!evt}, monitored: ${evt?.is_monitored}, res: ${evt?.resource_name?.slice(-30)||'null'}`);
     const name = evt?.resource_name || evt?.raw_payload?.smartNote?.name;
     if (name) {
       await prisma.eppMeetProcess.update({ where: { conference_id: conferenceId }, data: { smart_note_resource_name: name } });
