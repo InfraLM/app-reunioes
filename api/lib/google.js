@@ -107,9 +107,8 @@ async function getTranscript(transcriptName, impersonatedEmail) {
 }
 
 /**
- * Busca os detalhes de uma Smart Note (v2beta).
+ * Busca os detalhes de uma Smart Note (API v2 — GA desde abril/2026).
  * Retorna: { docsDestination: { document, exportUri }, state, ... }
- * Usa fetch direto pois o SDK ainda não suporta v2beta.
  * @param {string} smartNoteName - ex: "conferenceRecords/abc/smartNotes/xyz"
  * @param {string} impersonatedEmail
  */
@@ -117,7 +116,7 @@ async function getSmartNote(smartNoteName, impersonatedEmail) {
   try {
     const auth = getAuthClientForUser(impersonatedEmail);
     const { token } = await auth.getAccessToken();
-    const url = `https://meet.googleapis.com/v2beta/${smartNoteName}`;
+    const url = `https://meet.googleapis.com/v2/${smartNoteName}`;
     const response = await fetch(url, {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -164,13 +163,13 @@ async function listConferenceTranscripts(conferenceId, impersonatedEmail) {
 }
 
 /**
- * Lista todas as Smart Notes de uma conferência (v2beta).
+ * Lista todas as Smart Notes de uma conferência (API v2 — GA desde abril/2026).
  */
 async function listConferenceSmartNotes(conferenceId, impersonatedEmail) {
   try {
     const auth = getAuthClientForUser(impersonatedEmail);
     const { token } = await auth.getAccessToken();
-    const url = `https://meet.googleapis.com/v2beta/${conferenceId}/smartNotes`;
+    const url = `https://meet.googleapis.com/v2/${conferenceId}/smartNotes`;
     const response = await fetch(url, {
       headers: { Authorization: `Bearer ${token}` },
     });
