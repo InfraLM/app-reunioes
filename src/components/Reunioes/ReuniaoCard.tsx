@@ -124,9 +124,9 @@ export default function ReuniaoCard({ meeting, onClick, onCreateAta, actionLoadi
     meeting.status === 'webhook_erro';
 
   const artefatos = [
-    { label: 'Gravação', ok: meeting.has_recording },
-    { label: 'Transcrição', ok: meeting.has_transcript },
-    { label: 'Anotações', ok: meeting.has_smart_note },
+    { label: 'Gravação', ok: meeting.has_recording, link: meeting.recording_drive_link },
+    { label: 'Transcrição', ok: meeting.has_transcript, link: meeting.transcript_drive_link },
+    { label: 'Anotações', ok: meeting.has_smart_note, link: meeting.smart_note_drive_link },
   ];
 
   return (
@@ -158,18 +158,47 @@ export default function ReuniaoCard({ meeting, onClick, onCreateAta, actionLoadi
             {formatDate(meeting.meeting_start_time || meeting.governanca?.data_reuniao || null)}
           </span>
         </div>
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-zinc-500">Artefatos</span>
-          <div className="flex items-center gap-1.5">
-            {artefatos.map((a) => (
-              <span
-                key={a.label}
-                title={a.label}
-                className={`w-1.5 h-1.5 rounded-full ${a.ok ? 'bg-emerald-400' : 'bg-zinc-700'}`}
-              />
-            ))}
+
+        {/* Artefatos com links */}
+        {artefatos.map((a) => (
+          <div key={a.label} className="flex items-center justify-between text-xs">
+            <span className="text-zinc-500 flex items-center gap-1.5">
+              <span className={`w-1.5 h-1.5 rounded-full ${a.ok ? 'bg-emerald-400' : 'bg-zinc-700'}`} />
+              {a.label}
+            </span>
+            {a.ok && a.link ? (
+              <a
+                href={a.link}
+                target="_blank"
+                rel="noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="text-red-500 hover:text-red-400 font-semibold transition-colors"
+              >
+                Abrir
+              </a>
+            ) : a.ok ? (
+              <span className="text-zinc-600 italic">Processando...</span>
+            ) : (
+              <span className="text-zinc-700">—</span>
+            )}
           </div>
-        </div>
+        ))}
+
+        {meeting.drive_folder_link && (
+          <div className="flex items-center justify-between text-xs pt-1">
+            <span className="text-zinc-500">Pasta</span>
+            <a
+              href={meeting.drive_folder_link}
+              target="_blank"
+              rel="noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="text-red-500 hover:text-red-400 font-semibold transition-colors"
+            >
+              Drive
+            </a>
+          </div>
+        )}
+
         {meeting.webhook_last_error && (
           <p className="text-red-400 text-[11px] truncate" title={meeting.webhook_last_error}>
             {meeting.webhook_last_error}

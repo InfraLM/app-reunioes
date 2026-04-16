@@ -301,9 +301,9 @@ function MinimalDetailsModal({ meeting, onClose }: { meeting: MeetStatus; onClos
           <Row label="Conference ID" value={meeting.conference_id} mono />
           {meeting.meeting_start_time && <Row label="Início" value={new Date(meeting.meeting_start_time).toLocaleString('pt-BR')} />}
           {meeting.meeting_end_time && <Row label="Fim" value={new Date(meeting.meeting_end_time).toLocaleString('pt-BR')} />}
-          <Row label="Gravação" value={meeting.has_recording ? '✓' : '—'} />
-          <Row label="Transcrição" value={meeting.has_transcript ? '✓' : '—'} />
-          <Row label="Smart Notes" value={meeting.has_smart_note ? '✓' : '—'} />
+          <ArtifactRow label="Gravação" ok={meeting.has_recording} link={meeting.recording_drive_link} />
+          <ArtifactRow label="Transcrição" ok={meeting.has_transcript} link={meeting.transcript_drive_link} />
+          <ArtifactRow label="Smart Notes" ok={meeting.has_smart_note} link={meeting.smart_note_drive_link} />
           {meeting.drive_folder_link && (
             <a href={meeting.drive_folder_link} target="_blank" rel="noreferrer" className="block text-red-500 underline text-xs break-all">
               Abrir pasta no Drive
@@ -325,6 +325,24 @@ function Row({ label, value, mono }: { label: string; value: string; mono?: bool
     <div className="flex justify-between gap-3">
       <span className="text-zinc-500 text-xs font-semibold">{label}</span>
       <span className={`text-zinc-300 text-xs ${mono ? 'font-mono' : ''} break-all text-right`}>{value}</span>
+    </div>
+  );
+}
+
+function ArtifactRow({ label, ok, link }: { label: string; ok: boolean; link: string | null }) {
+  return (
+    <div className="flex justify-between gap-3">
+      <span className="text-zinc-500 text-xs font-semibold flex items-center gap-1.5">
+        <span className={`w-1.5 h-1.5 rounded-full ${ok ? 'bg-emerald-400' : 'bg-zinc-700'}`} />
+        {label}
+      </span>
+      {ok && link ? (
+        <a href={link} target="_blank" rel="noreferrer" className="text-red-500 hover:text-red-400 text-xs font-bold">
+          Abrir
+        </a>
+      ) : (
+        <span className="text-zinc-600 text-xs">{ok ? 'Processando...' : '—'}</span>
+      )}
     </div>
   );
 }
