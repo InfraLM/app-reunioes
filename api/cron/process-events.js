@@ -229,36 +229,40 @@ async function processConference(conferenceId) {
   console.log(`[worker] step 2b OK`);
 
   // 2c. Se ainda não tem título, buscar do nome do arquivo (transcript/smart_note) no Drive
-  const afterUrls = await prisma.eppMeetProcess.findUnique({ where: { conference_id: conferenceId } });
-  if (!afterUrls.meeting_title || afterUrls.meeting_title === 'Reunião do Google Meet' || afterUrls.meeting_title === 'Reunião instantânea') {
-    let titleFromFile = null;
-    const candidates = [
-      afterUrls.transcript_original_link,
-      afterUrls.smart_note_original_link,
-      afterUrls.recording_original_link,
-    ];
-    for (const link of candidates) {
-      if (!link) continue;
-      const fileId = extractFileIdFromDriveUrl(link);
-      if (!fileId) continue;
-      try {
+  try {
+    const afterUrls = await prisma.eppMeetProcess.findUnique({ where: { conference_id: conferenceId } });
+    console.log(`[worker] step 2c: current title="${afterUrls?.meeting_title || 'null'}"`);
+    const needsTitle = !afterUrls.meeting_title || afterUrls.meeting_title === 'Reunião do Google Meet' || afterUrls.meeting_title === 'Reunião instantânea';
+    if (needsTitle) {
+      let titleFromFile = null;
+      const candidates = [
+        ['transcript', afterUrls.transcript_original_link],
+        ['smart_note', afterUrls.smart_note_original_link],
+        ['recording', afterUrls.recording_original_link],
+      ];
+      for (const [kind, link] of candidates) {
+        if (!link) { console.log(`[worker] 2c: sem ${kind} link`); continue; }
+        const fileId = extractFileIdFromDriveUrl(link);
+        console.log(`[worker] 2c: ${kind} fileId=${fileId}`);
+        if (!fileId) continue;
         const fileName = await getDriveFileName(fileId, afterUrls.user_email);
-        console.log(`[worker] nome do arquivo: "${fileName}"`);
+        console.log(`[worker] 2c: ${kind} fileName="${fileName}"`);
         const extracted = extractMeetingTitleFromFileName(fileName);
-        if (extracted) {
-          titleFromFile = extracted;
-          break;
-        }
-      } catch (e) {
-        console.log(`[worker] falha ao ler nome do arquivo: ${e.message}`);
+        console.log(`[worker] 2c: ${kind} extracted="${extracted}"`);
+        if (extracted) { titleFromFile = extracted; break; }
       }
-    }
 
-    await prisma.eppMeetProcess.update({
-      where: { conference_id: conferenceId },
-      data: { meeting_title: titleFromFile || 'Reunião instantânea' },
-    });
-    console.log(`[worker] step 2c título final: "${titleFromFile || 'Reunião instantânea'}"`);
+      const finalTitle = titleFromFile || 'Reunião instantânea';
+      console.log(`[worker] 2c: ATUALIZANDO title para "${finalTitle}"`);
+      await prisma.eppMeetProcess.update({
+        where: { conference_id: conferenceId },
+        data: { meeting_title: finalTitle, updated_at: new Date() },
+      });
+      console.log(`[worker] 2c: UPDATE concluído`);
+    }
+  } catch (e) {
+    console.error(`[worker] step 2c falhou: ${e.message}`);
+    console.error(`  stack: ${e.stack?.split('\n').slice(0, 5).join(' | ')}`);
   }
 
   // 3. Garantir pasta no Drive
