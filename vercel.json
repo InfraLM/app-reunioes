@@ -1,9 +1,6 @@
 {
   "functions": {
     "api/**/*.js": {
-      "maxDuration": 60
-    },
-    "api/cron/generate-ata.js": {
       "maxDuration": 300
     }
   },
