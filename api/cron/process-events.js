@@ -11,16 +11,17 @@ const {
   getTranscript,
   getSmartNote,
   listConferenceSmartNotes,
-  getOrCreateUserFolder,
   findFolderByName,
   createFolder,
-  copyFileToFolder,
   extractFileIdFromDriveUrl,
   extractFolderIdFromDriveUrl,
   getDriveFileName,
   extractMeetingTitleFromFileName,
+  listFilesInFolder,
+  classifyDriveFile,
 } = require('../lib/google');
 const config = require('../lib/config');
+const { syncMeetStatus, STATUS_POS_ENVIO } = require('../lib/meet-status');
 
 const MAX_MEETS_PER_RUN = 5;
 
@@ -36,16 +37,6 @@ function emailToFolderName(email) {
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
     .join(' ');
 }
-
-// Status finais (ciclo de vida pós-artefatos) que NÃO devem ser sobrescritos pelo worker
-const STATUS_POS_ENVIO = new Set([
-  'webhook_enfileirado',
-  'webhook_enviando',
-  'webhook_enviado',
-  'webhook_erro',
-  'ata_gerada',
-  'ignorado',
-]);
 
 /**
  * POST/GET /api/cron/process-events
@@ -306,12 +297,11 @@ async function processConference(conferenceId) {
     }
   }
 
-  // 4. Copiar artefatos que ainda não foram copiados
+  // 4. Descobrir artefatos já presentes na subpasta (Drive é a fonte da verdade).
+  //    Admin/Meet deposita os arquivos direto; worker só lê e popula links.
   const latest = await prisma.eppMeetProcess.findUnique({ where: { conference_id: conferenceId } });
   if (latest.drive_folder_id) {
-    await tryCopyArtifact(latest, 'recording');
-    await tryCopyArtifact(latest, 'transcript');
-    await tryCopyArtifact(latest, 'smart_note');
+    await discoverArtifactsInFolder(latest);
   }
 
   // 5. Reler estado final e atualizar meet_status
@@ -472,115 +462,50 @@ async function resolveArtifactUrls(conferenceId, userEmail) {
   }
 }
 
-async function tryCopyArtifact(mp, kind) {
-  const linkField = `${kind}_original_link`;
-  const copiedField = `${kind}_copied_at`;
-  const fileIdField = `${kind}_drive_file_id`;
-  const driveLinkField = `${kind}_drive_link`;
-  const errorField = `${kind}_error`;
-  const hasField = `has_${kind}`;
-
-  if (!mp[hasField] || mp[copiedField]) return;
-  const link = mp[linkField];
-  if (!link) return;
-
-  const fileId = extractFileIdFromDriveUrl(link);
-  if (!fileId) {
-    await prisma.eppMeetProcess.update({
-      where: { conference_id: mp.conference_id },
-      data: { [errorField]: `Não foi possível extrair fileId de ${link}`, updated_at: new Date() },
-    });
-    return;
-  }
-
-  try {
-    const copied = await copyFileToFolder(fileId, mp.drive_folder_id, null, mp.user_email);
-    await prisma.eppMeetProcess.update({
-      where: { conference_id: mp.conference_id },
-      data: {
-        [fileIdField]: copied.id,
-        [driveLinkField]: copied.webViewLink || null,
-        [copiedField]: new Date(),
-        [errorField]: null,
-        updated_at: new Date(),
-      },
-    });
-    logger.info(`Copiado ${kind} para pasta: ${copied.id}`);
-  } catch (err) {
-    logger.error(`Falha ao copiar ${kind} ${fileId}: ${err.message}`);
-    await prisma.eppMeetProcess.update({
-      where: { conference_id: mp.conference_id },
-      data: { [errorField]: err.message.slice(0, 2000), updated_at: new Date() },
-    });
-  }
-}
-
 /**
- * Sincroniza epp_meet_status com o estado atual, respeitando statuses pós-envio.
+ * Lista arquivos da subpasta `drive_folder_id` e classifica cada um como
+ * recording / transcript / smart_note. Popula os campos *_drive_file_id,
+ * *_drive_link, *_copied_at e has_* com base nos arquivos encontrados.
+ * Não copia nada — assume que admin ou Meet já depositou os arquivos.
  */
-async function syncMeetStatus(mp, artefatosCompletos, aggregate) {
-  const existing = await prisma.eppMeetStatus.findUnique({
-    where: { conference_id: mp.conference_id },
-  });
-
-  // Não mexer em status pós-envio
-  if (existing && STATUS_POS_ENVIO.has(existing.status)) {
-    // Mas ainda atualiza flags de artefatos e timestamps (sem mudar status)
-    await prisma.eppMeetStatus.update({
-      where: { conference_id: mp.conference_id },
-      data: {
-        has_recording: mp.has_recording,
-        has_transcript: mp.has_transcript,
-        has_smart_note: mp.has_smart_note,
-        data_ultimo_artefato: aggregate.last_event_at,
-        updated_at: new Date(),
-      },
-    });
+async function discoverArtifactsInFolder(mp) {
+  let files;
+  try {
+    files = await listFilesInFolder(mp.drive_folder_id, mp.user_email);
+  } catch (err) {
+    console.error(`[worker] falha ao listar arquivos em ${mp.drive_folder_id}: ${err.message}`);
     return;
   }
 
-  const novoStatus = artefatosCompletos ? 'artefatos_completos' : 'artefatos_faltantes';
-  const estaEntrandoEmCompletos = novoStatus === 'artefatos_completos'
-    && (!existing || existing.status !== 'artefatos_completos');
+  console.log(`[worker] discover: ${files.length} arquivo(s) em ${mp.drive_folder_id}`);
 
-  if (existing) {
-    await prisma.eppMeetStatus.update({
+  const byKind = { recording: null, transcript: null, smart_note: null };
+  for (const f of files) {
+    const kind = classifyDriveFile({ name: f.name, mimeType: f.mimeType });
+    if (!kind) continue;
+    const current = byKind[kind];
+    const fCreated = f.createdTime ? new Date(f.createdTime).getTime() : 0;
+    const cCreated = current?.createdTime ? new Date(current.createdTime).getTime() : Infinity;
+    if (!current || fCreated < cCreated) byKind[kind] = f;
+  }
+
+  const updates = { updated_at: new Date() };
+  for (const kind of ['recording', 'transcript', 'smart_note']) {
+    const f = byKind[kind];
+    if (!f) continue;
+    updates[`${kind}_drive_file_id`] = f.id;
+    updates[`${kind}_drive_link`] = f.webViewLink || null;
+    updates[`${kind}_copied_at`] = f.createdTime ? new Date(f.createdTime) : new Date();
+    updates[`has_${kind}`] = true;
+    updates[`${kind}_error`] = null;
+  }
+
+  if (Object.keys(updates).length > 1) {
+    await prisma.eppMeetProcess.update({
       where: { conference_id: mp.conference_id },
-      data: {
-        status: novoStatus,
-        user_email: mp.user_email,
-        user_id: mp.user_id,
-        meeting_title: mp.meeting_title,
-        meet_space_id: mp.meet_space_id,
-        meeting_start_time: mp.meeting_start_time,
-        meeting_end_time: mp.meeting_end_time,
-        has_recording: mp.has_recording,
-        has_transcript: mp.has_transcript,
-        has_smart_note: mp.has_smart_note,
-        data_ultimo_artefato: aggregate.last_event_at,
-        ...(estaEntrandoEmCompletos && { data_artefatos_completos: new Date() }),
-        updated_at: new Date(),
-      },
+      data: updates,
     });
-  } else {
-    await prisma.eppMeetStatus.create({
-      data: {
-        conference_id: mp.conference_id,
-        status: novoStatus,
-        user_email: mp.user_email,
-        user_id: mp.user_id,
-        meeting_title: mp.meeting_title,
-        meet_space_id: mp.meet_space_id,
-        meeting_start_time: mp.meeting_start_time,
-        meeting_end_time: mp.meeting_end_time,
-        has_recording: mp.has_recording,
-        has_transcript: mp.has_transcript,
-        has_smart_note: mp.has_smart_note,
-        data_primeiro_artefato: aggregate.first_event_at,
-        data_ultimo_artefato: aggregate.last_event_at,
-        ...(artefatosCompletos && { data_artefatos_completos: new Date() }),
-      },
-    });
+    console.log(`[worker] discover OK: rec=${!!byKind.recording} trs=${!!byKind.transcript} sn=${!!byKind.smart_note}`);
   }
 }
 

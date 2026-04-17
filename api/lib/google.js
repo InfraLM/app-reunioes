@@ -470,6 +470,68 @@ function extractFileIdFromDriveUrl(url) {
   return null;
 }
 
+async function listFilesInFolder(folderId, impersonatedEmail) {
+  const drive = getDriveClientForUser(impersonatedEmail);
+  const q = `'${escapeDriveQuery(folderId)}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed = false`;
+  const all = [];
+  let pageToken;
+  do {
+    const { data } = await drive.files.list({
+      q,
+      fields: 'nextPageToken, files(id,name,webViewLink,mimeType,createdTime,size)',
+      pageSize: 100,
+      pageToken,
+      orderBy: 'createdTime',
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    });
+    if (data.files) all.push(...data.files);
+    pageToken = data.nextPageToken;
+  } while (pageToken);
+  return all;
+}
+
+async function listSubfoldersInFolder(folderId, impersonatedEmail) {
+  const drive = getDriveClientForUser(impersonatedEmail);
+  const q = `'${escapeDriveQuery(folderId)}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
+  const all = [];
+  let pageToken;
+  do {
+    const { data } = await drive.files.list({
+      q,
+      fields: 'nextPageToken, files(id,name,webViewLink,createdTime)',
+      pageSize: 100,
+      pageToken,
+      orderBy: 'createdTime',
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    });
+    if (data.files) all.push(...data.files);
+    pageToken = data.nextPageToken;
+  } while (pageToken);
+  return all;
+}
+
+function classifyDriveFile({ name, mimeType }) {
+  if (!mimeType) return null;
+  if (mimeType.startsWith('video/')) return 'recording';
+  if (mimeType === 'application/vnd.google-apps.document') {
+    const lower = (name || '').toLowerCase();
+    if (
+      lower.includes('anotações do gemini') ||
+      lower.includes('anotacoes do gemini') ||
+      lower.includes('notes by gemini') ||
+      lower.includes('smart note') ||
+      lower.includes('anotações inteligentes') ||
+      lower.includes('anotacoes inteligentes')
+    ) {
+      return 'smart_note';
+    }
+    return 'transcript';
+  }
+  return null;
+}
+
 module.exports = {
   getConferenceDetails,
   getRecording,
@@ -488,6 +550,9 @@ module.exports = {
   extractFolderIdFromDriveUrl,
   getDriveFileName,
   extractMeetingTitleFromFileName,
+  listFilesInFolder,
+  listSubfoldersInFolder,
+  classifyDriveFile,
 };
 
 /**
