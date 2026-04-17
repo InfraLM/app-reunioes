@@ -107,6 +107,22 @@ function formatDate(d: string | null) {
   return date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+function formatTime(d: string | null) {
+  if (!d) return null;
+  return new Date(d).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatDuration(start: string | null, end: string | null): string | null {
+  if (!start || !end) return null;
+  const ms = new Date(end).getTime() - new Date(start).getTime();
+  if (!Number.isFinite(ms) || ms <= 0) return null;
+  const total = Math.round(ms / 60000);
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  if (h > 0) return `${h}h ${m.toString().padStart(2, '0')}min`;
+  return `${m}min`;
+}
+
 function formatResponsavel(raw: string | null): string {
   if (!raw) return 'Não informado';
   const local = raw.includes('@') ? raw.split('@')[0] : raw;
@@ -158,6 +174,26 @@ export default function ReuniaoCard({ meeting, onClick, onCreateAta, actionLoadi
             {formatDate(meeting.meeting_start_time || meeting.data_primeiro_artefato || meeting.governanca?.data_reuniao || null)}
           </span>
         </div>
+
+        {(formatTime(meeting.meeting_start_time) || formatTime(meeting.meeting_end_time)) && (
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-zinc-500">Horário</span>
+            <span className="text-zinc-300 font-medium">
+              {formatTime(meeting.meeting_start_time) || '—'}
+              {' – '}
+              {formatTime(meeting.meeting_end_time) || '—'}
+            </span>
+          </div>
+        )}
+
+        {formatDuration(meeting.meeting_start_time, meeting.meeting_end_time) && (
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-zinc-500">Duração</span>
+            <span className="text-zinc-300 font-medium">
+              {formatDuration(meeting.meeting_start_time, meeting.meeting_end_time)}
+            </span>
+          </div>
+        )}
 
         {/* Artefatos com links */}
         {artefatos.map((a) => (

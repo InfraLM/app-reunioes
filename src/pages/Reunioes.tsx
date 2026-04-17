@@ -8,6 +8,7 @@ type SortBy = 'date_desc' | 'date_asc' | 'title_asc' | 'title_desc';
 type StatusFilter = 'all' | MeetLifecycleStatus;
 
 const PAGE_SIZE = 18;
+const CUTOFF_DATE = '2026-04-10'; // apenas reuniões desde 10/04/2026
 
 const STATUS_OPTS: { value: StatusFilter; label: string }[] = [
   { value: 'all', label: 'Todos' },
@@ -40,6 +41,10 @@ export default function ReunioesPage() {
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [sortBy, setSortBy] = useState<SortBy>('date_desc');
+  const [userFilter, setUserFilter] = useState<string>('all');
+  const [dateFrom, setDateFrom] = useState<string>('');
+  const [dateTo, setDateTo] = useState<string>('');
+  const [cutoffEnabled, setCutoffEnabled] = useState<boolean>(true);
   const [currentPage, setCurrentPage] = useState(1);
 
   const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
@@ -63,7 +68,13 @@ export default function ReunioesPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchText, statusFilter, sortBy]);
+  }, [searchText, statusFilter, sortBy, userFilter, dateFrom, dateTo, cutoffEnabled]);
+
+  const userOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const m of meetings) if (m.user_email) set.add(m.user_email);
+    return Array.from(set).sort();
+  }, [meetings]);
 
   const handleCreateAta = async (conferenceId: string) => {
     setActionLoading((p) => ({ ...p, [conferenceId]: true }));
@@ -83,6 +94,31 @@ export default function ReunioesPage() {
 
   const filtered = useMemo(() => {
     let r = [...meetings];
+    const getDateStr = (m: MeetStatus) =>
+      m.meeting_start_time || m.data_primeiro_artefato || m.governanca?.data_reuniao || null;
+
+    if (cutoffEnabled) {
+      r = r.filter((m) => {
+        const d = getDateStr(m);
+        return !d || d >= CUTOFF_DATE;
+      });
+    }
+    if (dateFrom) {
+      r = r.filter((m) => {
+        const d = getDateStr(m);
+        return !!d && d >= dateFrom;
+      });
+    }
+    if (dateTo) {
+      const to = dateTo + 'T23:59:59';
+      r = r.filter((m) => {
+        const d = getDateStr(m);
+        return !!d && d <= to;
+      });
+    }
+    if (userFilter !== 'all') {
+      r = r.filter((m) => m.user_email === userFilter);
+    }
     if (searchText.trim()) {
       const q = searchText.toLowerCase().trim();
       r = r.filter(
@@ -108,7 +144,7 @@ export default function ReunioesPage() {
       }
     });
     return r;
-  }, [meetings, searchText, statusFilter, sortBy]);
+  }, [meetings, searchText, statusFilter, sortBy, userFilter, dateFrom, dateTo, cutoffEnabled]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paginated = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
@@ -208,6 +244,66 @@ export default function ReunioesPage() {
             ))}
           </select>
         </div>
+      </div>
+
+      {/* Filtros avançados: usuário, datas, cutoff */}
+      <div className="bg-[#111111] border border-zinc-800 rounded-2xl px-5 py-4 mb-6 flex flex-wrap gap-3 items-center">
+        <select
+          value={userFilter}
+          onChange={(e) => setUserFilter(e.target.value)}
+          className="bg-zinc-900 border border-zinc-800 text-zinc-300 text-xs font-semibold rounded-xl px-3 py-2.5 focus:outline-none focus:border-red-600/60 cursor-pointer hover:text-white transition-colors min-w-[220px]"
+        >
+          <option value="all">Todos os usuários</option>
+          {userOptions.map((email) => (
+            <option key={email} value={email}>
+              {email}
+            </option>
+          ))}
+        </select>
+
+        <div className="flex items-center gap-2">
+          <label className="text-zinc-500 text-xs font-semibold">De</label>
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="bg-zinc-900 border border-zinc-800 text-zinc-300 text-xs font-semibold rounded-xl px-3 py-2.5 focus:outline-none focus:border-red-600/60 cursor-pointer hover:text-white transition-colors"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="text-zinc-500 text-xs font-semibold">Até</label>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="bg-zinc-900 border border-zinc-800 text-zinc-300 text-xs font-semibold rounded-xl px-3 py-2.5 focus:outline-none focus:border-red-600/60 cursor-pointer hover:text-white transition-colors"
+          />
+        </div>
+
+        <button
+          onClick={() => setCutoffEnabled((v) => !v)}
+          title={`Mostrar apenas reuniões a partir de ${CUTOFF_DATE}`}
+          className={`px-3 py-2.5 rounded-xl text-xs font-semibold transition-colors whitespace-nowrap ${
+            cutoffEnabled
+              ? 'bg-red-600 text-white'
+              : 'bg-zinc-900 border border-zinc-800 text-zinc-500 hover:text-white hover:border-zinc-700'
+          }`}
+        >
+          {cutoffEnabled ? '✓' : ''} Desde 10/04/2026
+        </button>
+
+        {(userFilter !== 'all' || dateFrom || dateTo) && (
+          <button
+            onClick={() => {
+              setUserFilter('all');
+              setDateFrom('');
+              setDateTo('');
+            }}
+            className="ml-auto text-zinc-500 hover:text-white text-xs font-semibold transition-colors"
+          >
+            Limpar filtros
+          </button>
+        )}
       </div>
 
       {filtered.length === 0 ? (

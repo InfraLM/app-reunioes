@@ -93,6 +93,14 @@ export const meetingsService = {
   },
 };
 
+// Serviço de estatísticas (Home)
+export const statsService = {
+  dashboard: async () => {
+    const response = await api.get('/stats/dashboard');
+    return response.data;
+  },
+};
+
 // Serviço de user_pastas (admin)
 export const userPastasService = {
   list: async () => {

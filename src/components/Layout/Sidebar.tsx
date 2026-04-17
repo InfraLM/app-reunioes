@@ -3,6 +3,15 @@ import { useAuth } from '../../context/AuthContext';
 
 const navItems = [
   {
+    path: '/app/home',
+    label: 'Home',
+    icon: (
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2h-4a1 1 0 0 1-1-1v-6h-4v6a1 1 0 0 1-1 1H5a2 2 0 0 1-2-2z" />
+      </svg>
+    ),
+  },
+  {
     path: '/app/ao-vivo',
     label: 'Ao Vivo',
     icon: (

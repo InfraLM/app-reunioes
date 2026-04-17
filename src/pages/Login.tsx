@@ -18,7 +18,7 @@ export default function Login() {
 
     try {
       await authLogin(login, senha);
-      navigate('/app/processamento');
+      navigate('/app/home');
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string } } };
       const msg = e.response?.data?.error;

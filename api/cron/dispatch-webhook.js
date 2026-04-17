@@ -60,18 +60,48 @@ export default async function handler(req, res) {
     if (!mp.has_transcript) missing.push('transcript');
     if (!mp.has_smart_note) missing.push('smart_note');
 
+    const durationMinutes =
+      mp.meeting_start_time && mp.meeting_end_time
+        ? Math.round(
+            (new Date(mp.meeting_end_time).getTime() - new Date(mp.meeting_start_time).getTime()) /
+              60000
+          )
+        : null;
+
     const payload = {
       conference_id: conferenceId,
       meeting_title: mp.meeting_title || 'Reunião do Google Meet',
       start_time: mp.meeting_start_time,
       end_time: mp.meeting_end_time,
+      duration_minutes: durationMinutes,
       account_email: mp.user_email,
       drive_folder_link: mp.drive_folder_link || '',
+      artefatos_completos: missing.length === 0,
+      missing_artifacts: missing,
+      artifacts: {
+        recording: {
+          present: !!mp.has_recording,
+          copy_url: mp.recording_drive_link || '',
+          original_url: mp.recording_original_link || '',
+          file_id: mp.recording_drive_file_id || null,
+        },
+        transcript: {
+          present: !!mp.has_transcript,
+          copy_url: mp.transcript_drive_link || '',
+          original_url: mp.transcript_original_link || '',
+          file_id: mp.transcript_drive_file_id || null,
+        },
+        smart_note: {
+          present: !!mp.has_smart_note,
+          copy_url: mp.smart_note_drive_link || '',
+          original_url: mp.smart_note_original_link || '',
+          file_id: mp.smart_note_drive_file_id || null,
+        },
+      },
+      // Campos legados — manter compat com workflows n8n existentes
       recording_url: mp.recording_drive_link || mp.recording_original_link || '',
       transcript_url: mp.transcript_drive_link || mp.transcript_original_link || '',
       smart_notes_url: mp.smart_note_drive_link || mp.smart_note_original_link || '',
-      artefatos_completos: missing.length === 0,
-      missing_artifacts: missing,
     };
 
     try {
