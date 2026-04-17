@@ -400,25 +400,46 @@ async function getDriveFileName(fileId, impersonatedEmail) {
 function extractMeetingTitleFromFileName(fileName) {
   if (!fileName || typeof fileName !== 'string') return null;
   let title = fileName;
-  // Remover sufixos comuns
+
+  // Remover prefixo "Cópia de " (quando o arquivo é uma cópia)
+  title = title.replace(/^Cópia de\s+/i, '').replace(/^Copy of\s+/i, '');
+
+  // Remover sufixos de tipo de artefato
   title = title
+    .replace(/\s*-\s*Anotações do Gemini\s*$/i, '')
+    .replace(/\s*-\s*Anotações do Meet\s*$/i, '')
     .replace(/\s*-\s*Notes by Gemini\s*$/i, '')
-    .replace(/\s*-\s*Transcript\s*$/i, '')
-    .replace(/\s*-\s*Recording\s*$/i, '')
+    .replace(/\s*-\s*Notas do Meet\s*$/i, '')
     .replace(/\s*-\s*Transcrição\s*$/i, '')
+    .replace(/\s*-\s*Transcription\s*$/i, '')
+    .replace(/\s*-\s*Transcript\s*$/i, '')
     .replace(/\s*-\s*Gravação\s*$/i, '')
-    .replace(/\s*-\s*Anotações do Meet\s*$/i, '');
-  // Remover timestamp no formato "YYYY/MM/DD HH:MM GMT..." (pega tudo depois do último traço-data)
-  title = title.replace(/\s*-\s*\d{4}[/-]\d{2}[/-]\d{2}.*$/i, '');
-  // Remover prefixos do Meet
+    .replace(/\s*-\s*Recording\s*$/i, '');
+
+  // Remover timestamp no formato "YYYY/MM/DD HH:MM GMT..." ou similar
+  title = title
+    .replace(/\s*-\s*\d{4}[/-]\d{2}[/-]\d{2}\s+\d{1,2}:\d{2}.*$/i, '')
+    .replace(/\s*\(\d{4}[/-]\d{2}[/-]\d{2}\).*$/i, '');
+
+  // Reunião instantânea (padrão Meet): "Reunião iniciada às YYYY/MM/DD HH:MM..."
+  if (/^Reunião iniciada às/i.test(title.trim())) {
+    return null; // título genérico → usa o default "Reunião instantânea"
+  }
+  if (/^Meeting started at/i.test(title.trim())) return null;
+
+  // Remover prefixos comuns
   title = title
     .replace(/^Anotações do Meet:\s*/i, '')
     .replace(/^Notes from\s+/i, '')
     .replace(/^Notas do Meet:\s*/i, '')
     .replace(/^Transcript of\s+/i, '')
+    .replace(/^Transcrição de\s+/i, '')
     .replace(/^Gravação de\s+/i, '')
     .replace(/^Recording of\s+/i, '');
-  return title.trim() || null;
+
+  const result = title.trim();
+  if (!result || result === 'Reunião') return null;
+  return result;
 }
 
 function extractFileIdFromDriveUrl(url) {
