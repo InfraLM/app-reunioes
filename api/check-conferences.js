@@ -43,7 +43,6 @@ export default async function handler(req, res) {
         recording_drive_link: m.recording_drive_link,
         transcript_drive_link: m.transcript_drive_link,
         smart_note_drive_link: m.smart_note_drive_link,
-        webhook_sent: m.webhook_sent,
         first_event_at: m.first_event_at,
         last_event_at: m.last_event_at,
       });

@@ -83,8 +83,6 @@ export default async function handler(req, res) {
       where: { conference_id: conferenceId },
       data: {
         status: finalStatus,
-        webhook_sent: true,
-        webhook_sent_at: new Date(),
         updated_at: new Date(),
       },
     });

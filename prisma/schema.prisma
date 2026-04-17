@@ -149,7 +149,6 @@ model EppMeetProcess {
   status                   String    @default("pending") @db.VarChar(30)  // pending, processing, complete, partial, error
   first_event_at           DateTime  @default(now()) @db.Timestamptz(6)
   last_event_at            DateTime  @default(now()) @db.Timestamptz(6)
-  error_message            String?   @db.Text
 
   drive_folder_id          String?   @db.VarChar(255)
   drive_folder_link        String?   @db.Text
@@ -178,10 +177,6 @@ model EppMeetProcess {
   smart_note_drive_link    String?   @db.Text
   smart_note_copied_at     DateTime? @db.Timestamptz(6)
   smart_note_error         String?   @db.Text
-
-  webhook_sent             Boolean   @default(false)
-  webhook_sent_at          DateTime? @db.Timestamptz(6)
-  webhook_response         String?   @db.Text
 
   created_at               DateTime  @default(now()) @db.Timestamptz(6)
   updated_at               DateTime  @default(now()) @db.Timestamptz(6)

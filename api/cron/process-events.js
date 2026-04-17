@@ -92,7 +92,6 @@ export default async function handler(req, res) {
           where: { conference_id: cid },
           data: {
             status: 'error',
-            error_message: err.message,
             updated_at: new Date(),
           },
         }).catch((e) => console.warn(`[worker] falha ao marcar erro: ${e.message}`));
@@ -288,10 +287,7 @@ async function processConference(conferenceId) {
       logger.info(`Pasta Drive criada/encontrada: ${meetFolder.id}`);
     } catch (err) {
       logger.error(`Falha ao criar pasta Drive para ${conferenceId}: ${err.message}`);
-      await prisma.eppMeetProcess.update({
-        where: { conference_id: conferenceId },
-        data: { error_message: `folder: ${err.message}`, updated_at: new Date() },
-      }).catch(() => {});
+      console.error(`[worker] folder error: ${err.message}`);
     }
   }
 
