@@ -58,31 +58,30 @@ export default async function handler(req, res) {
     const users = await prisma.eppUserPastas.findMany({ where: whereUsers });
     summary.total_users = users.length;
 
-    // Impersonar admin (tem acesso editor a todas as pastas) em vez de cada user
-    const adminEmail = process.env.GOOGLE_ADMIN_EMAIL || 'infra@liberdademedicaedu.com.br';
-
     for (const u of users) {
       const pastaDestinoId = extractFolderIdFromDriveUrl(u.pasta_destino);
       if (!pastaDestinoId) {
         summary.users_skipped += 1;
-        summary.errors.push({ user_email: u.user_email, error: 'pasta_destino inválida' });
+        summary.errors.push({ user_email: u.user_email, error: 'pasta_destino inválida', raw: u.pasta_destino });
         continue;
       }
 
       let subfolders;
       try {
-        subfolders = await listSubfoldersInFolder(pastaDestinoId, adminEmail);
+        // Impersonar o próprio usuário (é quem criou/tem acesso à pasta)
+        subfolders = await listSubfoldersInFolder(pastaDestinoId, u.user_email);
       } catch (err) {
         summary.users_skipped += 1;
-        summary.errors.push({ user_email: u.user_email, error: `list subfolders: ${err.message}` });
+        summary.errors.push({ user_email: u.user_email, pasta_destino_id: pastaDestinoId, error: `list subfolders: ${err.message}` });
         continue;
       }
 
       summary.users_processed += 1;
       summary.total_subfolders += subfolders.length;
-      if (summary.samples.length < 10 && subfolders.length > 0) {
+      if (summary.samples.length < 15) {
         summary.samples.push({
           user_email: u.user_email,
+          pasta_destino_raw: u.pasta_destino,
           pasta_destino_id: pastaDestinoId,
           subfolder_count: subfolders.length,
           first_names: subfolders.slice(0, 3).map((s) => s.name),
@@ -99,7 +98,7 @@ export default async function handler(req, res) {
 
         let files;
         try {
-          files = await listFilesInFolder(sub.id, adminEmail);
+          files = await listFilesInFolder(sub.id, u.user_email);
         } catch (err) {
           summary.errors.push({ conference_id: cid, user_email: u.user_email, error: `list files: ${err.message}` });
           continue;

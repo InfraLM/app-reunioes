@@ -469,10 +469,9 @@ async function resolveArtifactUrls(conferenceId, userEmail) {
  * Não copia nada — assume que admin ou Meet já depositou os arquivos.
  */
 async function discoverArtifactsInFolder(mp) {
-  const adminEmail = process.env.GOOGLE_ADMIN_EMAIL || 'infra@liberdademedicaedu.com.br';
   let files;
   try {
-    files = await listFilesInFolder(mp.drive_folder_id, adminEmail);
+    files = await listFilesInFolder(mp.drive_folder_id, mp.user_email);
   } catch (err) {
     console.error(`[worker] falha ao listar arquivos em ${mp.drive_folder_id}: ${err.message}`);
     return;
