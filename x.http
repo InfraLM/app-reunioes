@@ -1,0 +1,1 @@
+curl -X POST https://reuniao.lmedu.com.br/api/admin/backfill-all -H "Authorization: Bearer VGrt3467899io7856R75798MINyhggfT
