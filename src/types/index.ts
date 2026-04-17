@@ -88,10 +88,10 @@ export interface SubscriptionsStatusResponse {
 export type MeetLifecycleStatus =
   | 'artefatos_faltantes'
   | 'artefatos_completos'
-  | 'webhook_enfileirado'
-  | 'webhook_enviando'
-  | 'webhook_enviado'
-  | 'webhook_erro'
+  | 'enfileirado'
+  | 'processando'
+  | 'processado'
+  | 'erro'
   | 'ata_gerada'
   | 'ignorado';
 
@@ -113,14 +113,13 @@ export interface MeetStatus {
   data_ultimo_artefato: string | null;
   data_artefatos_completos: string | null;
   data_ata_gerada: string | null;
-  data_webhook_enfileirado: string | null;
-  data_webhook_enviado: string | null;
+  data_enfileirado: string | null;
+  data_processado: string | null;
   data_ultimo_erro: string | null;
 
-  webhook_scheduled_for: string | null;
-  webhook_attempt_count: number;
-  webhook_last_status_code: number | null;
-  webhook_last_error: string | null;
+  processing_attempt_count: number;
+  processing_last_status_code: number | null;
+  processing_last_error: string | null;
 
   queued_by: string | null;
   notes: string | null;

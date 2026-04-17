@@ -15,8 +15,8 @@ const STATUS_OPTS: { value: StatusFilter; label: string }[] = [
   { value: 'ata_gerada', label: 'Ata gerada' },
   { value: 'artefatos_completos', label: 'Completos' },
   { value: 'artefatos_faltantes', label: 'Faltantes' },
-  { value: 'webhook_enfileirado', label: 'Na fila' },
-  { value: 'webhook_erro', label: 'Erro' },
+  { value: 'enfileirado', label: 'Na fila' },
+  { value: 'erro', label: 'Erro' },
 ];
 
 const SORT_OPTS: { value: SortBy; label: string }[] = [
@@ -79,7 +79,7 @@ export default function ReunioesPage() {
   const handleCreateAta = async (conferenceId: string) => {
     setActionLoading((p) => ({ ...p, [conferenceId]: true }));
     try {
-      const res = await meetingsService.queueWebhook([conferenceId]);
+      const res = await meetingsService.enqueueAta([conferenceId]);
       const errCount = res?.summary?.error ?? 0;
       if (errCount > 0) {
         const msg = res?.results?.find((r: { status: string; message?: string }) => r.status === 'error')?.message || 'Erro desconhecido';
@@ -96,7 +96,7 @@ export default function ReunioesPage() {
         err?.response?.data?.results?.find((r) => r.status === 'error')?.message ||
         err?.message ||
         'Falha na requisição';
-      console.error('Erro ao enfileirar webhook:', e);
+      console.error('Erro ao enfileirar ata:', e);
       alert(`Erro ao enfileirar ata:\n\n${msg}`);
     } finally {
       setActionLoading((p) => {
@@ -420,9 +420,9 @@ function MinimalDetailsModal({ meeting, onClose }: { meeting: MeetStatus; onClos
               Abrir pasta no Drive
             </a>
           )}
-          {meeting.webhook_last_error && (
+          {meeting.processing_last_error && (
             <div className="p-3 rounded-xl bg-red-950/40 border border-red-800/60 text-red-400 text-xs">
-              <strong>Último erro:</strong> {meeting.webhook_last_error}
+              <strong>Último erro:</strong> {meeting.processing_last_error}
             </div>
           )}
         </div>

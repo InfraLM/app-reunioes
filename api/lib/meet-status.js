@@ -1,10 +1,10 @@
 const prisma = require('../../lib/prisma.cjs');
 
 const STATUS_POS_ENVIO = new Set([
-  'webhook_enfileirado',
-  'webhook_enviando',
-  'webhook_enviado',
-  'webhook_erro',
+  'enfileirado',
+  'processando',
+  'processado',
+  'erro',
   'ata_gerada',
   'ignorado',
 ]);

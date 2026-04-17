@@ -72,19 +72,19 @@ export default async function handler(req, res) {
 
     logger.info(`[generate-ata] iniciando ${conferenceId}`);
 
-    // Marca como "enviando" + inicia progresso
+    // Marca como "processando" + inicia progresso
     await prisma.eppMeetStatus.update({
       where: { conference_id: conferenceId },
       data: {
-        status: 'webhook_enviando',
+        status: 'processando',
         ata_step: 'inicializando',
         ata_progress: STEPS.inicializando.progress,
         ata_step_started_at: new Date(),
         ata_error_step: null,
-        webhook_last_error: null,
+        processing_last_error: null,
         updated_at: new Date(),
       },
-    }).catch((e) => logger.warn('[generate-ata] falha ao marcar enviando', { error: e.message }));
+    }).catch((e) => logger.warn('[generate-ata] falha ao marcar processando', { error: e.message }));
 
     const mp = await prisma.eppMeetProcess.findUnique({ where: { conference_id: conferenceId } });
     if (!mp) {
@@ -219,10 +219,10 @@ export default async function handler(req, res) {
         ata_step_started_at: new Date(),
         ata_error_step: null,
         data_ata_gerada: new Date(),
-        data_webhook_enviado: new Date(),
-        webhook_last_status_code: 200,
-        webhook_last_response: `PDF: ${uploaded.webViewLink}`,
-        webhook_last_error: null,
+        data_processado: new Date(),
+        processing_last_status_code: 200,
+        processing_last_response: `PDF: ${uploaded.webViewLink}`,
+        processing_last_error: null,
         updated_at: new Date(),
       },
     }).catch((e) => logger.warn('[generate-ata] falha ao atualizar status', { error: e.message }));
@@ -246,9 +246,9 @@ async function markError(conferenceId, message, errorStep = null) {
     await prisma.eppMeetStatus.update({
       where: { conference_id: conferenceId },
       data: {
-        status: 'webhook_erro',
+        status: 'erro',
         ata_error_step: errorStep,
-        webhook_last_error: String(message).slice(0, 2000),
+        processing_last_error: String(message).slice(0, 2000),
         data_ultimo_erro: new Date(),
         updated_at: new Date(),
       },

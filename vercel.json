@@ -4,6 +4,9 @@
       "maxDuration": 300
     }
   },
+  "crons": [
+    { "path": "/api/cron/process-queue", "schedule": "* * * * *" }
+  ],
   "rewrites": [
     {
       "source": "/app/:path*",

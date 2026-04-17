@@ -10,7 +10,7 @@ const prisma = require('../../lib/prisma.cjs');
  * GET /api/ata/progress
  *
  * Retorna a fila de geração de atas:
- *  - processing: em processamento ativo (webhook_enfileirado, webhook_enviando, webhook_erro recentes)
+ *  - processing: em processamento ativo (enfileirado, processando, erro recentes)
  *  - processed: atas geradas com sucesso (últimos 30 dias)
  *
  * Protegido por JWT.
@@ -40,15 +40,12 @@ export default async function handler(req, res) {
     const now = new Date();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-    // Em processamento: enfileirado, enviando, ou erro (dá chance de reprocessar)
+    // Em processamento: enfileirado, processando, ou erro (dá chance de reprocessar)
     const processing = await prisma.eppMeetStatus.findMany({
       where: {
-        status: { in: ['webhook_enfileirado', 'webhook_enviando', 'webhook_erro'] },
+        status: { in: ['enfileirado', 'processando', 'erro'] },
       },
-      orderBy: [
-        { webhook_scheduled_for: 'asc' },
-        { data_webhook_enfileirado: 'asc' },
-      ],
+      orderBy: [{ data_enfileirado: 'asc' }],
       select: {
         conference_id: true,
         status: true,
@@ -60,10 +57,9 @@ export default async function handler(req, res) {
         ata_progress: true,
         ata_step_started_at: true,
         ata_error_step: true,
-        webhook_scheduled_for: true,
-        webhook_attempt_count: true,
-        webhook_last_error: true,
-        data_webhook_enfileirado: true,
+        processing_attempt_count: true,
+        processing_last_error: true,
+        data_enfileirado: true,
         data_ultimo_erro: true,
         queued_by: true,
         updated_at: true,
@@ -86,7 +82,7 @@ export default async function handler(req, res) {
         meeting_start_time: true,
         meeting_end_time: true,
         data_ata_gerada: true,
-        webhook_last_response: true,
+        processing_last_response: true,
         queued_by: true,
       },
     });

@@ -14,10 +14,9 @@ interface ProcessingItem {
   ata_progress: number | null;
   ata_step_started_at: string | null;
   ata_error_step: string | null;
-  webhook_scheduled_for: string | null;
-  webhook_attempt_count: number;
-  webhook_last_error: string | null;
-  data_webhook_enfileirado: string | null;
+  processing_attempt_count: number;
+  processing_last_error: string | null;
+  data_enfileirado: string | null;
   data_ultimo_erro: string | null;
   queued_by: string | null;
   updated_at: string;
@@ -117,7 +116,7 @@ export default function AtasPage() {
     return () => clearInterval(id);
   }, [load]);
 
-  const hasErrors = useMemo(() => processing.some((p) => p.status === 'webhook_erro'), [processing]);
+  const hasErrors = useMemo(() => processing.some((p) => p.status === 'erro'), [processing]);
 
   if (loading) {
     return (
@@ -228,8 +227,8 @@ function ProcessingList({ items, onRefresh }: { items: ProcessingItem[]; onRefre
 }
 
 function ProcessingCard({ item, position, onRefresh }: { item: ProcessingItem; position: number; onRefresh: () => void }) {
-  const isError = item.status === 'webhook_erro';
-  const isEnfileirado = item.status === 'webhook_enfileirado';
+  const isError = item.status === 'erro';
+  const isEnfileirado = item.status === 'enfileirado';
   const progress = item.ata_progress ?? (isEnfileirado ? 0 : 0);
   const currentStep = item.ata_step || 'aguardando';
   const currentStepLabel = STEP_LABELS[currentStep] || 'Aguardando fila';
@@ -302,11 +301,11 @@ function ProcessingCard({ item, position, onRefresh }: { item: ProcessingItem; p
 
       {/* Info adicional */}
       <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 text-[11px] text-zinc-600">
-        {item.webhook_attempt_count > 0 && (
-          <span>Tentativa: <span className="text-zinc-400 font-medium">{item.webhook_attempt_count}</span></span>
+        {item.processing_attempt_count > 0 && (
+          <span>Tentativa: <span className="text-zinc-400 font-medium">{item.processing_attempt_count}</span></span>
         )}
-        {item.data_webhook_enfileirado && (
-          <span>Enfileirada <span className="text-zinc-400 font-medium">{formatRelative(item.data_webhook_enfileirado)}</span></span>
+        {item.data_enfileirado && (
+          <span>Enfileirada <span className="text-zinc-400 font-medium">{formatRelative(item.data_enfileirado)}</span></span>
         )}
         {item.queued_by && (
           <span>por <span className="text-zinc-400 font-medium">{item.queued_by}</span></span>
@@ -314,10 +313,10 @@ function ProcessingCard({ item, position, onRefresh }: { item: ProcessingItem; p
       </div>
 
       {/* Erro */}
-      {item.webhook_last_error && (
+      {item.processing_last_error && (
         <div className="mt-3 p-3 rounded-lg bg-red-950/40 border border-red-800/60">
           <p className="text-red-400 text-xs font-semibold mb-1">Erro</p>
-          <p className="text-red-300 text-xs leading-relaxed break-all">{item.webhook_last_error}</p>
+          <p className="text-red-300 text-xs leading-relaxed break-all">{item.processing_last_error}</p>
         </div>
       )}
     </div>
@@ -382,9 +381,9 @@ function ProcessedList({ items }: { items: ProcessedItem[] }) {
 
 function StatusPill({ status }: { status: string }) {
   const map: Record<string, { label: string; color: string }> = {
-    webhook_enfileirado: { label: 'Na fila', color: 'bg-blue-500/10 text-blue-400 border-blue-500/30' },
-    webhook_enviando: { label: 'Processando', color: 'bg-amber-500/10 text-amber-400 border-amber-500/30' },
-    webhook_erro: { label: 'Erro', color: 'bg-red-500/10 text-red-400 border-red-500/30' },
+    enfileirado: { label: 'Na fila', color: 'bg-blue-500/10 text-blue-400 border-blue-500/30' },
+    processando: { label: 'Processando', color: 'bg-amber-500/10 text-amber-400 border-amber-500/30' },
+    erro: { label: 'Erro', color: 'bg-red-500/10 text-red-400 border-red-500/30' },
   };
   const m = map[status] || { label: status, color: 'bg-zinc-800 text-zinc-400 border-zinc-700' };
   return (

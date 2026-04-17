@@ -228,16 +228,14 @@ model EppMeetStatus {
   data_ultimo_artefato     DateTime? @db.Timestamptz(6)
   data_artefatos_completos DateTime? @db.Timestamptz(6)
   data_ata_gerada          DateTime? @db.Timestamptz(6)
-  data_webhook_enfileirado DateTime? @db.Timestamptz(6)
-  data_webhook_enviado     DateTime? @db.Timestamptz(6)
+  data_enfileirado         DateTime? @db.Timestamptz(6)
+  data_processado          DateTime? @db.Timestamptz(6)
   data_ultimo_erro         DateTime? @db.Timestamptz(6)
 
-  webhook_scheduled_for    DateTime? @db.Timestamptz(6)
-  webhook_qstash_msg_id    String?   @db.VarChar(255)
-  webhook_attempt_count    Int       @default(0)
-  webhook_last_status_code Int?
-  webhook_last_response    String?   @db.Text
-  webhook_last_error       String?   @db.Text
+  processing_attempt_count    Int       @default(0)
+  processing_last_status_code Int?
+  processing_last_response    String?   @db.Text
+  processing_last_error       String?   @db.Text
 
   queued_by                String?   @db.VarChar(255)
   notes                    String?   @db.Text

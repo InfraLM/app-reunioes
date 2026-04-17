@@ -79,14 +79,14 @@ export const monitorService = {
   },
 };
 
-// Serviço do novo fluxo de meetings (status + fila de webhook)
+// Serviço do novo fluxo de meetings (status + fila de processamento de atas)
 export const meetingsService = {
   list: async (filter: 'todos' | 'em_aguardo' | 'ata_gerada' = 'todos') => {
     const response = await api.get('/meetings/status', { params: { filter } });
     return response.data;
   },
-  queueWebhook: async (conferenceIds: string[]) => {
-    const response = await api.post('/meetings/queue-webhook', {
+  enqueueAta: async (conferenceIds: string[]) => {
+    const response = await api.post('/meetings/enqueue-ata', {
       conference_ids: conferenceIds,
     });
     return response.data;

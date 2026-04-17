@@ -4,14 +4,14 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 
 const jwt = require('jsonwebtoken');
-const logger = require('../lib/logger');
 const prisma = require('../../lib/prisma.cjs');
 
 /**
- * POST /api/meetings/queue-webhook  body: { conference_ids: string[] }
+ * POST /api/meetings/enqueue-ata  body: { conference_ids: string[] }
  *
- * Enfileira N webhooks no QStash com delays escalonados (0s, 60s, 120s, ...)
- * e atualiza epp_meet_status com status='webhook_enfileirado'.
+ * Marca as meetings como `status = 'enfileirado'` em epp_meet_status.
+ * Não dispara processamento — o cron /api/cron/process-queue (cada 1min)
+ * pega e dispara /api/cron/generate-ata em paralelo.
  *
  * Protegido por JWT.
  */
@@ -44,60 +44,35 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'conference_ids (array) é obrigatório' });
   }
 
-  const appUrl = process.env.APP_URL;
-  const cronSecret = process.env.CRON_SECRET || '';
-  if (!appUrl) {
-    return res.status(500).json({ error: 'APP_URL não configurado' });
-  }
-
-  const targetUrl = `${appUrl}/api/cron/generate-ata`;
   const results = [];
 
   for (const cid of conference_ids) {
     try {
-      // UPSERT em meet_status (marca como enfileirado imediatamente — UI já vê)
       await prisma.eppMeetStatus.upsert({
         where: { conference_id: cid },
         update: {
-          status: 'webhook_enfileirado',
-          webhook_scheduled_for: new Date(),
-          webhook_attempt_count: { increment: 1 },
-          data_webhook_enfileirado: new Date(),
+          status: 'enfileirado',
+          processing_attempt_count: { increment: 1 },
+          processing_last_error: null,
+          data_enfileirado: new Date(),
           queued_by: authedEmail,
           ata_step: null,
           ata_progress: 0,
           ata_error_step: null,
-          webhook_last_error: null,
           updated_at: new Date(),
         },
         create: {
           conference_id: cid,
           user_email: 'unknown',
-          status: 'webhook_enfileirado',
-          webhook_scheduled_for: new Date(),
-          webhook_attempt_count: 1,
-          data_webhook_enfileirado: new Date(),
+          status: 'enfileirado',
+          processing_attempt_count: 1,
+          data_enfileirado: new Date(),
           queued_by: authedEmail,
         },
       });
-
-      // Fire-and-forget: dispara a chamada para /api/cron/generate-ata sem aguardar.
-      // A função Vercel roda em background até maxDuration (300s).
-      // Cada meet gera uma invocação isolada → podem rodar em paralelo.
-      fetch(targetUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${cronSecret}`,
-        },
-        body: JSON.stringify({ conference_id: cid }),
-      }).catch((err) => {
-        console.error(`[queue-webhook] fire-and-forget falhou ${cid}: ${err.message}`);
-      });
-
       results.push({ conference_id: cid, status: 'ok' });
     } catch (err) {
-      console.error(`[queue-webhook] falha ao enfileirar ${cid}: ${err.message}`);
+      console.error(`[enqueue-ata] falha ao enfileirar ${cid}: ${err.message}`);
       results.push({ conference_id: cid, status: 'error', message: err.message });
     }
   }
@@ -108,7 +83,7 @@ export default async function handler(req, res) {
     error: results.filter((r) => r.status === 'error').length,
   };
 
-  console.log('[queue-webhook] concluído:', JSON.stringify(summary));
+  console.log('[enqueue-ata] concluído:', JSON.stringify(summary));
 
   let httpStatus = 200;
   if (summary.ok === 0 && summary.error > 0) httpStatus = 502;

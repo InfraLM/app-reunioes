@@ -39,7 +39,7 @@ export default async function handler(req, res) {
   const filter = String(req.query.filter || 'todos');
   let where = {};
   if (filter === 'em_aguardo') {
-    where = { status: { in: ['artefatos_faltantes', 'artefatos_completos', 'webhook_erro'] } };
+    where = { status: { in: ['artefatos_faltantes', 'artefatos_completos', 'erro'] } };
   } else if (filter === 'ata_gerada') {
     where = { status: 'ata_gerada' };
   }

@@ -49,7 +49,7 @@ const THEMES: Record<MeetLifecycleStatus, Theme> = {
     dot: 'bg-red-400',
     label: 'Artefatos faltantes',
   },
-  webhook_enfileirado: {
+  enfileirado: {
     border: 'border-blue-700/50',
     bg: 'bg-blue-950/20',
     hoverBorder: 'hover:border-blue-500/60',
@@ -59,17 +59,17 @@ const THEMES: Record<MeetLifecycleStatus, Theme> = {
     dot: 'bg-blue-400',
     label: 'Na fila',
   },
-  webhook_enviando: {
+  processando: {
     border: 'border-blue-700/50',
     bg: 'bg-blue-950/20',
     hoverBorder: 'hover:border-blue-500/60',
     chipBg: 'bg-blue-500/10',
     chipText: 'text-blue-400',
     chipBorder: 'border-blue-500/30',
-    dot: 'bg-blue-400',
-    label: 'Enviando',
+    dot: 'bg-blue-400 animate-pulse',
+    label: 'Processando',
   },
-  webhook_enviado: {
+  processado: {
     border: 'border-cyan-700/50',
     bg: 'bg-cyan-950/20',
     hoverBorder: 'hover:border-cyan-500/60',
@@ -77,9 +77,9 @@ const THEMES: Record<MeetLifecycleStatus, Theme> = {
     chipText: 'text-cyan-400',
     chipBorder: 'border-cyan-500/30',
     dot: 'bg-cyan-400',
-    label: 'Aguardando ata',
+    label: 'Processado',
   },
-  webhook_erro: {
+  erro: {
     border: 'border-red-700/60',
     bg: 'bg-red-950/30',
     hoverBorder: 'hover:border-red-500/70',
@@ -87,7 +87,7 @@ const THEMES: Record<MeetLifecycleStatus, Theme> = {
     chipText: 'text-red-400',
     chipBorder: 'border-red-500/30',
     dot: 'bg-red-400',
-    label: 'Erro no envio',
+    label: 'Erro',
   },
   ignorado: {
     border: 'border-zinc-700',
@@ -137,7 +137,7 @@ export default function ReuniaoCard({ meeting, onClick, onCreateAta, actionLoadi
   const canSend =
     meeting.status === 'artefatos_completos' ||
     meeting.status === 'artefatos_faltantes' ||
-    meeting.status === 'webhook_erro';
+    meeting.status === 'erro';
 
   const artefatos = [
     { label: 'Gravação', ok: meeting.has_recording, link: meeting.recording_drive_link },
@@ -235,9 +235,9 @@ export default function ReuniaoCard({ meeting, onClick, onCreateAta, actionLoadi
           </div>
         )}
 
-        {meeting.webhook_last_error && (
-          <p className="text-red-400 text-[11px] truncate" title={meeting.webhook_last_error}>
-            {meeting.webhook_last_error}
+        {meeting.processing_last_error && (
+          <p className="text-red-400 text-[11px] truncate" title={meeting.processing_last_error}>
+            {meeting.processing_last_error}
           </p>
         )}
       </div>

@@ -51,3 +51,4 @@ log_vercel_atual.json
 
 # MCP config (local)
 .mcp.json
+app-reunioes-log-*.json

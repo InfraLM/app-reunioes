@@ -1,0 +1,113 @@
+import 'dotenv/config';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
+
+const prisma = require('../../lib/prisma.cjs');
+
+const MAX_PARALLEL = 5; // limite de atas disparadas por tick
+const STUCK_MINUTES = 10; // timeout para considerar uma ata "presa" em processando
+
+/**
+ * GET /api/cron/process-queue
+ *
+ * Vercel Cron (a cada minuto) que dispara /api/cron/generate-ata
+ * em paralelo para todas as meetings com status = 'enfileirado'
+ * (até MAX_PARALLEL por tick).
+ *
+ * Também reenfileira meetings que ficaram 'processando' por mais de 10 min
+ * (dispatch original morreu).
+ *
+ * Protegido por CRON_SECRET (Vercel Cron injeta via header).
+ */
+export default async function handler(req, res) {
+  const authHeader = req.headers.authorization;
+  const isVercelCron = !!req.headers['x-vercel-cron']; // Vercel cron envia esse header
+  if (
+    process.env.CRON_SECRET
+    && !isVercelCron
+    && authHeader !== `Bearer ${process.env.CRON_SECRET}`
+  ) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const now = new Date();
+    const stuckThreshold = new Date(now.getTime() - STUCK_MINUTES * 60 * 1000);
+
+    // 1. Pega enfileirados (novos)
+    const enqueued = await prisma.eppMeetStatus.findMany({
+      where: { status: 'enfileirado' },
+      orderBy: { data_enfileirado: 'asc' },
+      take: MAX_PARALLEL,
+      select: { conference_id: true, user_email: true },
+    });
+
+    // 2. Pega processando que está travado há mais de STUCK_MINUTES min
+    const stuck = await prisma.eppMeetStatus.findMany({
+      where: {
+        status: 'processando',
+        ata_step_started_at: { lt: stuckThreshold },
+      },
+      orderBy: { ata_step_started_at: 'asc' },
+      take: Math.max(0, MAX_PARALLEL - enqueued.length),
+      select: { conference_id: true, user_email: true, ata_step: true },
+    });
+
+    const pending = [...enqueued, ...stuck];
+    if (pending.length === 0) {
+      return res.status(200).json({ processed: 0, message: 'fila vazia' });
+    }
+
+    console.log(`[process-queue] disparando ${pending.length} meetings (${enqueued.length} novas + ${stuck.length} presas)`);
+
+    const appUrl = process.env.APP_URL;
+    const cronSecret = process.env.CRON_SECRET || '';
+    if (!appUrl) {
+      return res.status(500).json({ error: 'APP_URL não configurado' });
+    }
+
+    const targetUrl = `${appUrl}/api/cron/generate-ata`;
+
+    // Dispara TUDO em paralelo. Cada chamada roda em sua própria função Vercel.
+    // Usamos Promise.allSettled para não quebrar se uma falhar.
+    const results = await Promise.allSettled(
+      pending.map((p) =>
+        fetch(targetUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${cronSecret}`,
+          },
+          body: JSON.stringify({ conference_id: p.conference_id }),
+        }).then(async (r) => ({
+          conference_id: p.conference_id,
+          ok: r.ok,
+          status: r.status,
+          body: r.ok ? null : (await r.text()).slice(0, 500),
+        }))
+      )
+    );
+
+    const summary = results.map((r, i) => ({
+      conference_id: pending[i].conference_id,
+      ...(r.status === 'fulfilled' ? r.value : { ok: false, error: r.reason?.message || 'unknown' }),
+    }));
+
+    console.log('[process-queue] concluído:', JSON.stringify({
+      total: summary.length,
+      ok: summary.filter((s) => s.ok).length,
+      error: summary.filter((s) => !s.ok).length,
+    }));
+
+    return res.status(200).json({
+      processed: summary.length,
+      enqueued_count: enqueued.length,
+      stuck_count: stuck.length,
+      results: summary,
+    });
+  } catch (err) {
+    console.error('[process-queue] ERRO:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+}
