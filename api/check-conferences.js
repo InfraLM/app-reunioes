@@ -36,6 +36,8 @@ export default async function handler(req, res) {
         conference_id: m.conference_id,
         user_email: m.user_email,
         status: m.status,
+        meeting_title: m.meeting_title,
+        meeting_start_time: m.meeting_start_time,
         has_recording: m.has_recording,
         has_transcript: m.has_transcript,
         has_smart_note: m.has_smart_note,
@@ -43,6 +45,9 @@ export default async function handler(req, res) {
         recording_drive_link: m.recording_drive_link,
         transcript_drive_link: m.transcript_drive_link,
         smart_note_drive_link: m.smart_note_drive_link,
+        recording_resource_name: m.recording_resource_name,
+        transcript_resource_name: m.transcript_resource_name,
+        smart_note_resource_name: m.smart_note_resource_name,
         first_event_at: m.first_event_at,
         last_event_at: m.last_event_at,
       });

@@ -54,6 +54,10 @@ export default async function handler(req, res) {
     total_events: events.length,
     events: evtSummary,
     meet_process: mp ? {
+      meeting_title: mp.meeting_title,
+      meeting_start_time: mp.meeting_start_time,
+      status: mp.status,
+      user_email: mp.user_email,
       has_recording: mp.has_recording,
       has_transcript: mp.has_transcript,
       has_smart_note: mp.has_smart_note,
