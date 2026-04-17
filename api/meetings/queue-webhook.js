@@ -53,7 +53,7 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'QSTASH_TOKEN ou APP_URL não configurados' });
   }
 
-  const targetUrl = `${appUrl}/api/cron/dispatch-webhook`;
+  const targetUrl = `${appUrl}/api/cron/generate-ata`;
   const results = [];
 
   for (let i = 0; i < conference_ids.length; i++) {
