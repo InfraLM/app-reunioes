@@ -93,6 +93,14 @@ export const meetingsService = {
   },
 };
 
+// Serviço de progresso de geração de ata (Processamento)
+export const ataService = {
+  progress: async () => {
+    const response = await api.get('/ata/progress');
+    return response.data;
+  },
+};
+
 // Serviço de estatísticas (Home)
 export const statsService = {
   dashboard: async () => {

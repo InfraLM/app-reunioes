@@ -4,6 +4,7 @@ import HomePage from './Home';
 import AoVivoPage from './Processamento';
 import ReunioesPage from './Reunioes';
 import RecentesPage from './EmAguardo';
+import AtasPage from './Atas';
 import ChatIAPage from './ChatIA';
 import StatusPage from './Status';
 
@@ -18,6 +19,7 @@ export default function Dashboard() {
             <Route path="ao-vivo" element={<AoVivoPage />} />
             <Route path="reunioes" element={<ReunioesPage />} />
             <Route path="recentes" element={<RecentesPage />} />
+            <Route path="atas" element={<AtasPage />} />
             <Route path="chat-ia" element={<ChatIAPage />} />
             <Route path="status" element={<StatusPage />} />
             <Route path="*" element={<Navigate to="home" replace />} />

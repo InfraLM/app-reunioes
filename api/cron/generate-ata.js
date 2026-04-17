@@ -16,6 +16,35 @@ const {
   flattenAtaJson,
 } = require('../lib/ata-generator');
 
+// Etapas do workflow — cada step avança ata_progress em epp_meet_status
+// para a UI mostrar barra de progresso em tempo real.
+const STEPS = {
+  inicializando:      { label: 'Inicializando', progress: 5 },
+  baixando_artefatos: { label: 'Baixando artefatos', progress: 15 },
+  analisando_ia:      { label: 'Analisando com IA', progress: 35 },
+  montando_html:      { label: 'Montando HTML', progress: 65 },
+  gerando_pdf:        { label: 'Gerando PDF', progress: 75 },
+  enviando_drive:     { label: 'Enviando para Drive', progress: 90 },
+  salvando_dados:     { label: 'Salvando dados', progress: 98 },
+  concluido:          { label: 'Concluído', progress: 100 },
+};
+
+async function setStep(conferenceId, stepKey, extra = {}) {
+  const s = STEPS[stepKey];
+  const data = {
+    ata_step: stepKey,
+    ata_progress: s?.progress ?? 0,
+    ata_step_started_at: new Date(),
+    updated_at: new Date(),
+    ...extra,
+  };
+  try {
+    await prisma.eppMeetStatus.update({ where: { conference_id: conferenceId }, data });
+  } catch (e) {
+    logger.warn('[generate-ata] falha ao atualizar step', { error: e.message, stepKey });
+  }
+}
+
 /**
  * POST /api/cron/generate-ata  body: { conference_id }
  *
@@ -43,19 +72,28 @@ export default async function handler(req, res) {
 
     logger.info(`[generate-ata] iniciando ${conferenceId}`);
 
-    // Marca como "enviando" (reaproveita os estados existentes)
+    // Marca como "enviando" + inicia progresso
     await prisma.eppMeetStatus.update({
       where: { conference_id: conferenceId },
-      data: { status: 'webhook_enviando', updated_at: new Date() },
+      data: {
+        status: 'webhook_enviando',
+        ata_step: 'inicializando',
+        ata_progress: STEPS.inicializando.progress,
+        ata_step_started_at: new Date(),
+        ata_error_step: null,
+        webhook_last_error: null,
+        updated_at: new Date(),
+      },
     }).catch((e) => logger.warn('[generate-ata] falha ao marcar enviando', { error: e.message }));
 
     const mp = await prisma.eppMeetProcess.findUnique({ where: { conference_id: conferenceId } });
     if (!mp) {
-      await markError(conferenceId, 'meet_process não encontrado');
+      await markError(conferenceId, 'meet_process não encontrado', 'inicializando');
       return res.status(200).json({ ok: false, error: 'not found' });
     }
 
     // Step 1 — Baixar docs (transcript/smart_note) do Drive
+    await setStep(conferenceId, 'baixando_artefatos');
     const transcriptUrl = mp.transcript_drive_link || mp.transcript_original_link || '';
     const smartNoteUrl = mp.smart_note_drive_link || mp.smart_note_original_link || '';
     const transcriptFileId = extractFileIdFromDriveUrl(transcriptUrl);
@@ -67,7 +105,7 @@ export default async function handler(req, res) {
     ]);
 
     if (!transcricao && !anotacao) {
-      await markError(conferenceId, 'Nenhum texto disponível (transcrição e anotação vazias)');
+      await markError(conferenceId, 'Nenhum texto disponível (transcrição e anotação vazias)', 'baixando_artefatos');
       return res.status(200).json({ ok: false, error: 'no content' });
     }
 
@@ -88,31 +126,36 @@ export default async function handler(req, res) {
       anotacao: anotacao.slice(0, 60000),
     };
 
+    // Step 2 — Anthropic
+    await setStep(conferenceId, 'analisando_ia');
     let ataJson;
     try {
       ataJson = await extractAtaJson(input);
     } catch (err) {
-      await markError(conferenceId, `Anthropic falhou: ${err.message}`);
+      await markError(conferenceId, `Anthropic falhou: ${err.message}`, 'analisando_ia');
       return res.status(200).json({ ok: false, error: err.message });
     }
 
     logger.info(`[generate-ata] JSON extraído: ${ataJson.titulo_reuniao}`);
 
     // Step 3 — Montar HTML
+    await setStep(conferenceId, 'montando_html');
     const html = buildAtaHtml(ataJson);
 
     // Step 4 — HTML → PDF
+    await setStep(conferenceId, 'gerando_pdf');
     let pdfBuffer;
     try {
       pdfBuffer = await renderHtmlToPdf(html);
     } catch (err) {
-      await markError(conferenceId, `PDF falhou: ${err.message}`);
+      await markError(conferenceId, `PDF falhou: ${err.message}`, 'gerando_pdf');
       return res.status(200).json({ ok: false, error: err.message });
     }
 
     // Step 5 — Upload para Drive
+    await setStep(conferenceId, 'enviando_drive');
     if (!mp.drive_folder_id) {
-      await markError(conferenceId, 'drive_folder_id ausente em meet_process');
+      await markError(conferenceId, 'drive_folder_id ausente em meet_process', 'enviando_drive');
       return res.status(200).json({ ok: false, error: 'no folder' });
     }
 
@@ -127,11 +170,14 @@ export default async function handler(req, res) {
     try {
       uploaded = await uploadPdfToFolder(pdfBuffer, mp.drive_folder_id, fileName, mp.user_email);
     } catch (err) {
-      await markError(conferenceId, `Upload Drive falhou: ${err.message}`);
+      await markError(conferenceId, `Upload Drive falhou: ${err.message}`, 'enviando_drive');
       return res.status(200).json({ ok: false, error: err.message });
     }
 
     logger.info(`[generate-ata] PDF upload OK: ${uploaded.id}`);
+
+    // Step 6 — UPSERT em DB
+    await setStep(conferenceId, 'salvando_dados');
 
     // Step 6 — UPSERT em epp_reunioes_governanca
     const flat = flattenAtaJson(ataJson);
@@ -168,6 +214,10 @@ export default async function handler(req, res) {
       where: { conference_id: conferenceId },
       data: {
         status: 'ata_gerada',
+        ata_step: 'concluido',
+        ata_progress: STEPS.concluido.progress,
+        ata_step_started_at: new Date(),
+        ata_error_step: null,
         data_ata_gerada: new Date(),
         data_webhook_enviado: new Date(),
         webhook_last_status_code: 200,
@@ -191,12 +241,13 @@ export default async function handler(req, res) {
   }
 }
 
-async function markError(conferenceId, message) {
+async function markError(conferenceId, message, errorStep = null) {
   try {
     await prisma.eppMeetStatus.update({
       where: { conference_id: conferenceId },
       data: {
         status: 'webhook_erro',
+        ata_error_step: errorStep,
         webhook_last_error: String(message).slice(0, 2000),
         data_ultimo_erro: new Date(),
         updated_at: new Date(),

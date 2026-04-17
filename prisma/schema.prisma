@@ -242,6 +242,11 @@ model EppMeetStatus {
   queued_by                String?   @db.VarChar(255)
   notes                    String?   @db.Text
 
+  ata_step                 String?   @db.VarChar(40)
+  ata_progress             Int?      @default(0)
+  ata_step_started_at      DateTime? @db.Timestamptz(6)
+  ata_error_step           String?   @db.VarChar(40)
+
   created_at               DateTime  @default(now()) @db.Timestamptz(6)
   updated_at               DateTime  @default(now()) @db.Timestamptz(6)
 
