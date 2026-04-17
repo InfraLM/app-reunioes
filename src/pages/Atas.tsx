@@ -208,8 +208,11 @@ function ProcessingList({ items, onRefresh }: { items: ProcessingItem[]; onRefre
     return (
       <div className="flex flex-col items-center justify-center text-center py-20 bg-[#111111] border border-zinc-800 rounded-2xl">
         <p className="text-white font-bold text-base mb-2">Nada na fila</p>
-        <p className="text-zinc-600 text-sm max-w-[300px] leading-relaxed">
-          Quando você clicar em "Criar Ata" numa reunião, ela aparece aqui em tempo real com o progresso por etapa.
+        <p className="text-zinc-600 text-sm max-w-[360px] leading-relaxed">
+          Quando você clicar em <strong className="text-zinc-400">"Criar Ata"</strong> numa reunião, ela aparece aqui em tempo real com o progresso por etapa.
+        </p>
+        <p className="text-zinc-700 text-xs mt-3 max-w-[360px] leading-relaxed">
+          Se clicou e nada apareceu: confira se recebeu alerta de erro. Se não: o clique pode não ter passado pela fila (QStash). Vá em Reuniões e clique novamente.
         </p>
       </div>
     );

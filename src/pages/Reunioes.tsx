@@ -79,10 +79,25 @@ export default function ReunioesPage() {
   const handleCreateAta = async (conferenceId: string) => {
     setActionLoading((p) => ({ ...p, [conferenceId]: true }));
     try {
-      await meetingsService.queueWebhook([conferenceId]);
+      const res = await meetingsService.queueWebhook([conferenceId]);
+      const errCount = res?.summary?.error ?? 0;
+      if (errCount > 0) {
+        const msg = res?.results?.find((r: { status: string; message?: string }) => r.status === 'error')?.message || 'Erro desconhecido';
+        alert(`Não foi possível enfileirar a geração da ata:\n\n${msg}\n\nVerifique /app/atas ou contate o admin.`);
+      } else {
+        // Sucesso: leva o usuário pra aba de processamento
+        window.location.href = '/app/atas';
+        return;
+      }
       await load();
     } catch (e) {
+      const err = e as { response?: { data?: { summary?: { error?: number }; results?: Array<{ status: string; message?: string }> } }; message?: string };
+      const msg =
+        err?.response?.data?.results?.find((r) => r.status === 'error')?.message ||
+        err?.message ||
+        'Falha na requisição';
       console.error('Erro ao enfileirar webhook:', e);
+      alert(`Erro ao enfileirar ata:\n\n${msg}`);
     } finally {
       setActionLoading((p) => {
         const next = { ...p };

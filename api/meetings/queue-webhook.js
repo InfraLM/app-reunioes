@@ -114,7 +114,7 @@ export default async function handler(req, res) {
         qstash_msg_id: qstashMsgId,
       });
     } catch (err) {
-      logger.error(`[queue-webhook] falha ao enfileirar ${cid}`, { error: err.message });
+      console.error(`[queue-webhook] falha ao enfileirar ${cid}: ${err.message}`);
       results.push({ conference_id: cid, status: 'error', message: err.message });
     }
   }
@@ -126,6 +126,15 @@ export default async function handler(req, res) {
     gap_seconds: GAP_SECONDS,
   };
 
-  logger.info('[queue-webhook] concluído', summary);
-  return res.status(200).json({ summary, results });
+  console.log('[queue-webhook] concluído:', JSON.stringify(summary));
+
+  // Escolhe status HTTP apropriado para o frontend detectar erro:
+  // - 200 OK: tudo certo
+  // - 207 Multi-Status: parcial (alguns ok, alguns erro)
+  // - 502 Bad Gateway: todas falharam (problema no QStash/infra)
+  let httpStatus = 200;
+  if (summary.ok === 0 && summary.error > 0) httpStatus = 502;
+  else if (summary.error > 0) httpStatus = 207;
+
+  return res.status(httpStatus).json({ summary, results });
 }
