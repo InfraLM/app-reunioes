@@ -406,4 +406,57 @@ module.exports = {
   getOrCreateUserFolder,
   copyFileToFolder,
   extractFileIdFromDriveUrl,
+  findCalendarEventByMeetLink,
 };
+
+/**
+ * Busca evento do Google Calendar do usuário que tem o meet_link informado.
+ * Útil para obter o TÍTULO real da reunião como foi marcada.
+ * @param {string} userEmail - impersonar este usuário
+ * @param {string} meetLink - ex: "https://meet.google.com/abc-defg-hij"
+ * @param {Date|null} hintDate - data aproximada para narrow (opcional)
+ * @returns {Promise<{summary, start, end, organizer}|null>}
+ */
+async function findCalendarEventByMeetLink(userEmail, meetLink, hintDate = null) {
+  if (!meetLink) return null;
+  try {
+    const auth = getAuthClientForUser(userEmail);
+    const calendar = google.calendar({ version: 'v3', auth });
+
+    // Busca em uma janela de ±7 dias da hintDate (ou últimos 90 dias se não tiver)
+    const base = hintDate ? new Date(hintDate) : new Date();
+    const days = hintDate ? 7 : 90;
+    const timeMin = new Date(base.getTime() - days * 86400000).toISOString();
+    const timeMax = new Date(base.getTime() + days * 86400000).toISOString();
+
+    // Extrai o ID do meet link (parte após o último /)
+    const linkIdMatch = meetLink.match(/meet\.google\.com\/([a-zA-Z0-9-]+)/);
+    const linkId = linkIdMatch ? linkIdMatch[1] : null;
+
+    const { data } = await calendar.events.list({
+      calendarId: 'primary',
+      timeMin,
+      timeMax,
+      maxResults: 250,
+      singleEvents: true,
+      orderBy: 'startTime',
+      q: linkId || undefined,
+    });
+
+    for (const event of data.items || []) {
+      const eventMeetUri = event.conferenceData?.entryPoints?.find((ep) => ep.entryPointType === 'video')?.uri;
+      if (eventMeetUri === meetLink || (linkId && eventMeetUri?.includes(linkId))) {
+        return {
+          summary: event.summary || null,
+          start: event.start?.dateTime || event.start?.date || null,
+          end: event.end?.dateTime || event.end?.date || null,
+          organizer: event.organizer?.email || null,
+        };
+      }
+    }
+    return null;
+  } catch (error) {
+    logger.warn(`[findCalendarEvent] falhou para ${userEmail}: ${error.message}`);
+    return null;
+  }
+}

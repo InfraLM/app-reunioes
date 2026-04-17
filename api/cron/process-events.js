@@ -16,6 +16,7 @@ const {
   createFolder,
   copyFileToFolder,
   extractFileIdFromDriveUrl,
+  findCalendarEventByMeetLink,
 } = require('../lib/google');
 const config = require('../lib/config');
 
@@ -203,15 +204,29 @@ async function processConference(conferenceId) {
   });
 
   // 2. Buscar metadados da reunião (só 1x)
-  if (!mp.meeting_title || !mp.meeting_start_time) {
+  if (!mp.meeting_title || mp.meeting_title === 'Reunião do Google Meet' || !mp.meeting_start_time) {
     try {
       const details = await getConferenceDetails(conferenceId, mp.user_email);
+      let title = details?.space?.displayName || null;
+      const startTime = details?.startTime ? new Date(details.startTime) : null;
+      const endTime = details?.endTime ? new Date(details.endTime) : null;
+      const meetUri = details?.space?.meetingUri || null;
+
+      // Se não tem título, buscar no Calendar pelo meet_link
+      if (!title && meetUri) {
+        const calEvent = await findCalendarEventByMeetLink(mp.user_email, meetUri, startTime);
+        if (calEvent?.summary) {
+          title = calEvent.summary;
+          console.log(`[worker] título do Calendar: "${title}"`);
+        }
+      }
+
       await prisma.eppMeetProcess.update({
         where: { conference_id: conferenceId },
         data: {
-          meeting_title: details?.space?.displayName || 'Reunião do Google Meet',
-          meeting_start_time: details?.startTime ? new Date(details.startTime) : null,
-          meeting_end_time: details?.endTime ? new Date(details.endTime) : null,
+          meeting_title: title || 'Reunião do Google Meet',
+          meeting_start_time: startTime,
+          meeting_end_time: endTime,
         },
       });
     } catch (err) {
