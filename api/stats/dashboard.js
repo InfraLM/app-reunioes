@@ -116,6 +116,17 @@ export default async function handler(req, res) {
       { name: 'Outras', value: Math.max(0, total - comiteCount) },
     ];
 
+    // 1:1 — título contém "1:1", "1x1", "one-on-one" (case-insensitive, aceita espaços)
+    const oneOnOneRe = /(\b1\s*[:xX×]\s*1\b|one[\s-]?on[\s-]?one)/i;
+    let oneOnOneCount = 0;
+    for (const m of meetings) {
+      if (m.meeting_title && oneOnOneRe.test(m.meeting_title)) oneOnOneCount += 1;
+    }
+    const oneOnOnePie = [
+      { name: '1:1', value: oneOnOneCount },
+      { name: 'Outras', value: Math.max(0, total - oneOnOneCount) },
+    ];
+
     // Distribuição por status (pie)
     const statusMap = new Map();
     for (const m of meetings) {
@@ -151,6 +162,7 @@ export default async function handler(req, res) {
       duracao_media_min: duracaoMediaMin,
       ranking_mes: ranking,
       weekly,
+      one_on_one_pie: oneOnOnePie,
       comite_pie: comitePie,
       status_dist: statusDist,
       artifacts_counts: artifactsCounts,

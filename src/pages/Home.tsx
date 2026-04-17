@@ -21,11 +21,13 @@ interface DashboardData {
   ranking_mes: { user_email: string; count: number }[];
   weekly: { week_start: string; count: number }[];
   comite_pie: { name: string; value: number }[];
+  one_on_one_pie: { name: string; value: number }[];
   status_dist: { name: string; value: number }[];
   artifacts_counts: { recording: number; transcript: number; smart_note: number };
 }
 
 const COLORS_COMITE = ['#ef4444', '#3f3f46'];
+const COLORS_1A1 = ['#f59e0b', '#3f3f46'];
 const COLORS_STATUS = ['#10b981', '#f59e0b', '#ef4444', '#3b82f6', '#06b6d4', '#dc2626', '#71717a'];
 
 function formatUser(email: string): string {
@@ -85,6 +87,10 @@ export default function HomePage() {
     data.total > 0
       ? Math.round(((data.comite_pie[0]?.value || 0) / data.total) * 100)
       : 0;
+  const oneOnOnePct =
+    data.total > 0
+      ? Math.round(((data.one_on_one_pie?.[0]?.value || 0) / data.total) * 100)
+      : 0;
 
   return (
     <>
@@ -104,8 +110,8 @@ export default function HomePage() {
         <Kpi label="Duração média" value={`${data.duracao_media_min}min`} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        {/* Reuniões semanais */}
+      {/* Reuniões semanais (full width) */}
+      <div className="mb-6">
         <Card title="Reuniões por semana" subtitle="Últimas 8 semanas">
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -122,8 +128,10 @@ export default function HomePage() {
             </ResponsiveContainer>
           </div>
         </Card>
+      </div>
 
-        {/* Comitês vs Outras (donut) */}
+      {/* Donuts: Comitês + 1:1 lado a lado */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <Card title="Reuniões de comitê" subtitle={`${comitePct}% contêm "Comitê" no título`}>
           <div className="h-64 flex items-center justify-center relative">
             <ResponsiveContainer width="100%" height="100%">
@@ -155,6 +163,39 @@ export default function HomePage() {
             </div>
           </div>
           <LegendList data={data.comite_pie} colors={COLORS_COMITE} />
+        </Card>
+
+        <Card title="Reuniões 1:1" subtitle={`${oneOnOnePct}% contêm "1:1" no título`}>
+          <div className="h-64 flex items-center justify-center relative">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={data.one_on_one_pie || []}
+                  innerRadius={62}
+                  outerRadius={96}
+                  paddingAngle={2}
+                  dataKey="value"
+                  nameKey="name"
+                  stroke="none"
+                >
+                  {(data.one_on_one_pie || []).map((_, i) => (
+                    <Cell key={i} fill={COLORS_1A1[i % COLORS_1A1.length]} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  contentStyle={{ background: '#18181b', border: '1px solid #27272a', borderRadius: 8 }}
+                  labelStyle={{ color: '#a1a1aa' }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="text-center">
+                <p className="text-3xl font-black text-white">{oneOnOnePct}%</p>
+                <p className="text-zinc-500 text-xs font-semibold">1:1</p>
+              </div>
+            </div>
+          </div>
+          <LegendList data={data.one_on_one_pie || []} colors={COLORS_1A1} />
         </Card>
       </div>
 
