@@ -13,7 +13,7 @@ const {
 } = require('../lib/google');
 const { syncMeetStatus } = require('../lib/meet-status');
 
-const CONFERENCE_ID_RE = /^[a-z0-9-]{8,}$/i;
+const CONFERENCE_ID_RE = /^(conferenceRecords\/)?[a-zA-Z0-9_-]{8,}$/;
 
 /**
  * POST /api/admin/sync-from-drive-folders
