@@ -16,7 +16,8 @@ const {
   createFolder,
   copyFileToFolder,
   extractFileIdFromDriveUrl,
-  findCalendarEventByMeetLink,
+  getDriveFileName,
+  extractMeetingTitleFromFileName,
 } = require('../lib/google');
 const config = require('../lib/config');
 
@@ -77,18 +78,15 @@ export default async function handler(req, res) {
 
     const results = [];
     for (const cid of conferenceIds) {
-      logger.info(`[worker] >>> iniciando meet ${cid}`);
+      console.log(`[worker] >>> iniciando meet ${cid}`);
       try {
         const result = await processConference(cid);
-        logger.info(`[worker] <<< meet ${cid} finalizada`, result);
+        console.log(`[worker] <<< meet ${cid} finalizada`, JSON.stringify(result));
         results.push({ conference_id: cid, ...result });
       } catch (err) {
-        logger.error(`[worker] ERRO na meet ${cid}`, {
-          error: err.message,
-          name: err.name,
-          code: err.code,
-          stack: err.stack?.split('\n').slice(0, 10).join('\n'),
-        });
+        console.error(`[worker] ❌ ERRO na meet ${cid}: ${err.message}`);
+        console.error(`  name: ${err.name} | code: ${err.code}`);
+        console.error(`  stack: ${err.stack?.split('\n').slice(0, 8).join(' | ')}`);
         results.push({ conference_id: cid, status: 'error', error: err.message });
         await prisma.eppMeetProcess.update({
           where: { conference_id: cid },
@@ -97,7 +95,7 @@ export default async function handler(req, res) {
             error_message: err.message,
             updated_at: new Date(),
           },
-        }).catch(() => {});
+        }).catch((e) => console.warn(`[worker] falha ao marcar erro: ${e.message}`));
       }
     }
 
@@ -204,38 +202,65 @@ async function processConference(conferenceId) {
   });
 
   // 2. Buscar metadados da reunião (só 1x)
-  if (!mp.meeting_title || mp.meeting_title === 'Reunião do Google Meet' || !mp.meeting_start_time) {
+  console.log(`[worker] step 2: metadados meet ${conferenceId.slice(-20)}`);
+  if (!mp.meeting_title || mp.meeting_title === 'Reunião do Google Meet' || mp.meeting_title === 'Reunião instantânea' || !mp.meeting_start_time) {
     try {
       const details = await getConferenceDetails(conferenceId, mp.user_email);
-      let title = details?.space?.displayName || null;
+      const title = details?.space?.displayName || null;
       const startTime = details?.startTime ? new Date(details.startTime) : null;
       const endTime = details?.endTime ? new Date(details.endTime) : null;
-      const meetUri = details?.space?.meetingUri || null;
-
-      // Se não tem título, buscar no Calendar pelo meet_link
-      if (!title && meetUri) {
-        const calEvent = await findCalendarEventByMeetLink(mp.user_email, meetUri, startTime);
-        if (calEvent?.summary) {
-          title = calEvent.summary;
-          console.log(`[worker] título do Calendar: "${title}"`);
-        }
-      }
 
       await prisma.eppMeetProcess.update({
         where: { conference_id: conferenceId },
         data: {
-          meeting_title: title || 'Reunião do Google Meet',
-          meeting_start_time: startTime,
-          meeting_end_time: endTime,
+          ...(title && { meeting_title: title }),
+          ...(startTime && { meeting_start_time: startTime }),
+          ...(endTime && { meeting_end_time: endTime }),
         },
       });
+      console.log(`[worker] step 2 OK — title: ${title || 'null'}, start: ${startTime || 'null'}`);
     } catch (err) {
-      logger.warn(`Falha ao buscar detalhes da meet ${conferenceId}: ${err.message}`);
+      console.error(`[worker] step 2 falhou: ${err.message}`);
     }
   }
 
   // 2b. Resolver URLs dos artefatos via Meet API (Pub/Sub só envia resource_name, não o link)
+  console.log(`[worker] step 2b: resolveArtifactUrls`);
   await resolveArtifactUrls(conferenceId, mp.user_email);
+  console.log(`[worker] step 2b OK`);
+
+  // 2c. Se ainda não tem título, buscar do nome do arquivo (transcript/smart_note) no Drive
+  const afterUrls = await prisma.eppMeetProcess.findUnique({ where: { conference_id: conferenceId } });
+  if (!afterUrls.meeting_title || afterUrls.meeting_title === 'Reunião do Google Meet' || afterUrls.meeting_title === 'Reunião instantânea') {
+    let titleFromFile = null;
+    const candidates = [
+      afterUrls.transcript_original_link,
+      afterUrls.smart_note_original_link,
+      afterUrls.recording_original_link,
+    ];
+    for (const link of candidates) {
+      if (!link) continue;
+      const fileId = extractFileIdFromDriveUrl(link);
+      if (!fileId) continue;
+      try {
+        const fileName = await getDriveFileName(fileId, afterUrls.user_email);
+        console.log(`[worker] nome do arquivo: "${fileName}"`);
+        const extracted = extractMeetingTitleFromFileName(fileName);
+        if (extracted) {
+          titleFromFile = extracted;
+          break;
+        }
+      } catch (e) {
+        console.log(`[worker] falha ao ler nome do arquivo: ${e.message}`);
+      }
+    }
+
+    await prisma.eppMeetProcess.update({
+      where: { conference_id: conferenceId },
+      data: { meeting_title: titleFromFile || 'Reunião instantânea' },
+    });
+    console.log(`[worker] step 2c título final: "${titleFromFile || 'Reunião instantânea'}"`);
+  }
 
   // 3. Garantir pasta no Drive
   const current = await prisma.eppMeetProcess.findUnique({ where: { conference_id: conferenceId } });

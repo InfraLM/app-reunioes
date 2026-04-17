@@ -375,6 +375,52 @@ async function copyFileToFolder(fileId, destinationFolderId, newName, impersonat
  *   - https://drive.google.com/open?id=FILE_ID
  *   - FILE_ID puro
  */
+/**
+ * Busca o nome do arquivo no Drive pelo fileId.
+ */
+async function getDriveFileName(fileId, impersonatedEmail) {
+  if (!fileId || !impersonatedEmail) return null;
+  try {
+    const drive = getDriveClientForUser(impersonatedEmail);
+    const { data } = await drive.files.get({
+      fileId,
+      fields: 'id,name',
+      supportsAllDrives: true,
+    });
+    return data?.name || null;
+  } catch (err) {
+    return null;
+  }
+}
+
+/**
+ * Extrai o título da reunião do nome do arquivo do Meet.
+ * Ex: "1:1 Vinicius - 2026/04/16 15:00 GMT-03:00 - Notes by Gemini" → "1:1 Vinicius"
+ */
+function extractMeetingTitleFromFileName(fileName) {
+  if (!fileName || typeof fileName !== 'string') return null;
+  let title = fileName;
+  // Remover sufixos comuns
+  title = title
+    .replace(/\s*-\s*Notes by Gemini\s*$/i, '')
+    .replace(/\s*-\s*Transcript\s*$/i, '')
+    .replace(/\s*-\s*Recording\s*$/i, '')
+    .replace(/\s*-\s*Transcrição\s*$/i, '')
+    .replace(/\s*-\s*Gravação\s*$/i, '')
+    .replace(/\s*-\s*Anotações do Meet\s*$/i, '');
+  // Remover timestamp no formato "YYYY/MM/DD HH:MM GMT..." (pega tudo depois do último traço-data)
+  title = title.replace(/\s*-\s*\d{4}[/-]\d{2}[/-]\d{2}.*$/i, '');
+  // Remover prefixos do Meet
+  title = title
+    .replace(/^Anotações do Meet:\s*/i, '')
+    .replace(/^Notes from\s+/i, '')
+    .replace(/^Notas do Meet:\s*/i, '')
+    .replace(/^Transcript of\s+/i, '')
+    .replace(/^Gravação de\s+/i, '')
+    .replace(/^Recording of\s+/i, '');
+  return title.trim() || null;
+}
+
 function extractFileIdFromDriveUrl(url) {
   if (!url) return null;
   if (!url.startsWith('http')) return url;
@@ -406,7 +452,8 @@ module.exports = {
   getOrCreateUserFolder,
   copyFileToFolder,
   extractFileIdFromDriveUrl,
-  findCalendarEventByMeetLink,
+  getDriveFileName,
+  extractMeetingTitleFromFileName,
 };
 
 /**
