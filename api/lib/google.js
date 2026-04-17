@@ -442,6 +442,18 @@ function extractMeetingTitleFromFileName(fileName) {
   return result;
 }
 
+/**
+ * Extrai o ID de uma pasta do Drive a partir da URL.
+ * Suporta: /drive/folders/XXX, /folders/XXX, ou o ID puro.
+ */
+function extractFolderIdFromDriveUrl(url) {
+  if (!url) return null;
+  const trimmed = String(url).trim();
+  if (!trimmed.startsWith('http')) return trimmed;
+  const m = trimmed.match(/folders\/([a-zA-Z0-9_-]{10,})/);
+  return m ? m[1] : null;
+}
+
 function extractFileIdFromDriveUrl(url) {
   if (!url) return null;
   if (!url.startsWith('http')) return url;
@@ -473,6 +485,7 @@ module.exports = {
   getOrCreateUserFolder,
   copyFileToFolder,
   extractFileIdFromDriveUrl,
+  extractFolderIdFromDriveUrl,
   getDriveFileName,
   extractMeetingTitleFromFileName,
 };

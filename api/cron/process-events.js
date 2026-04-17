@@ -16,6 +16,7 @@ const {
   createFolder,
   copyFileToFolder,
   extractFileIdFromDriveUrl,
+  extractFolderIdFromDriveUrl,
   getDriveFileName,
   extractMeetingTitleFromFileName,
 } = require('../lib/google');
@@ -265,33 +266,43 @@ async function processConference(conferenceId) {
     console.error(`  stack: ${e.stack?.split('\n').slice(0, 5).join(' | ')}`);
   }
 
-  // 3. Garantir pasta no Drive
+  // 3. Garantir pasta no Drive — usa pasta_destino configurada pelo admin em epp_user_pastas
   const current = await prisma.eppMeetProcess.findUnique({ where: { conference_id: conferenceId } });
   if (!current.drive_folder_id) {
     try {
-      const rootFolder = config.google.sharedFolderId;
-      if (!rootFolder) throw new Error('GOOGLE_SHARED_DRIVE_FOLDER_ID não configurado');
-
-      const folderName = emailToFolderName(current.user_email);
-      console.log(`[worker] pasta do usuário: "${folderName}" (email: ${current.user_email})`);
-      const userFolder = await getOrCreateUserFolder(rootFolder, folderName, current.user_email);
-      let meetFolder = await findFolderByName(userFolder.id, conferenceId, current.user_email);
-      if (!meetFolder) {
-        meetFolder = await createFolder(userFolder.id, conferenceId, current.user_email);
-      }
-      await prisma.eppMeetProcess.update({
-        where: { conference_id: conferenceId },
-        data: {
-          drive_folder_id: meetFolder.id,
-          drive_folder_link: meetFolder.webViewLink || null,
-          drive_folder_created_at: new Date(),
-          updated_at: new Date(),
-        },
+      // Busca pasta_destino do usuário no banco
+      const userPasta = await prisma.eppUserPastas.findUnique({
+        where: { user_email: current.user_email },
       });
-      logger.info(`Pasta Drive criada/encontrada: ${meetFolder.id}`);
+      console.log(`[worker] step 3: user_pasta para ${current.user_email}:`, JSON.stringify(userPasta || {}));
+
+      const pastaDestinoId = userPasta?.pasta_destino
+        ? extractFolderIdFromDriveUrl(userPasta.pasta_destino)
+        : null;
+
+      if (!pastaDestinoId) {
+        console.warn(`[worker] pasta_destino não configurada para ${current.user_email} — pulando cópia`);
+      } else {
+        console.log(`[worker] pasta_destino ID: ${pastaDestinoId}`);
+        // Cria (ou acha) subpasta da reunião dentro da pasta_destino
+        let meetFolder = await findFolderByName(pastaDestinoId, conferenceId, current.user_email);
+        if (!meetFolder) {
+          meetFolder = await createFolder(pastaDestinoId, conferenceId, current.user_email);
+        }
+        await prisma.eppMeetProcess.update({
+          where: { conference_id: conferenceId },
+          data: {
+            drive_folder_id: meetFolder.id,
+            drive_folder_link: meetFolder.webViewLink || null,
+            drive_folder_created_at: new Date(),
+            updated_at: new Date(),
+          },
+        });
+        console.log(`[worker] Pasta Drive OK: ${meetFolder.id}`);
+      }
     } catch (err) {
-      logger.error(`Falha ao criar pasta Drive para ${conferenceId}: ${err.message}`);
       console.error(`[worker] folder error: ${err.message}`);
+      console.error(`  stack: ${err.stack?.split('\n').slice(0, 5).join(' | ')}`);
     }
   }
 

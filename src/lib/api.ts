@@ -93,6 +93,18 @@ export const meetingsService = {
   },
 };
 
+// Serviço de user_pastas (admin)
+export const userPastasService = {
+  list: async () => {
+    const response = await api.get('/admin/user-pastas');
+    return response.data;
+  },
+  update: async (user_email: string, data: { pasta_origem?: string | null; pasta_destino?: string | null }) => {
+    const response = await api.patch('/admin/user-pastas', { user_email, ...data });
+    return response.data;
+  },
+};
+
 // Serviço de inscrições no Pub/Sub (Workspace Events API)
 export const subscriptionsService = {
   status: async () => {

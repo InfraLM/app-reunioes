@@ -187,6 +187,12 @@ export interface RecentMeeting {
   lifecycle_status: MeetLifecycleStatus | null;
 }
 
+export interface UserPasta {
+  user_email: string;
+  pasta_origem: string | null;
+  pasta_destino: string | null;
+}
+
 export interface LiveMeeting {
   conference_id: string;
   user_email: string;

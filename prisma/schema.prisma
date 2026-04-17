@@ -189,6 +189,19 @@ model EppMeetProcess {
 }
 
 // ============================================================
+// Tabela: Mapeamento de pastas por usuário (origem + destino no Drive)
+// Editável pelo admin na aba Status
+// ============================================================
+model EppUserPastas {
+  user_email      String  @id @db.VarChar(255)
+  pasta_origem    String? @db.Text
+  pasta_destino   String? @db.Text
+
+  @@map("epp_user_pastas")
+  @@schema("lovable")
+}
+
+// ============================================================
 // Tabela: Ciclo de vida pós-artefatos e fila de webhook
 // Status possíveis:
 //   artefatos_faltantes (🔴) | artefatos_completos (🟡) |
