@@ -260,6 +260,11 @@ model EppMeetStatus {
   ata_step_started_at      DateTime? @db.Timestamptz(6)
   ata_error_step           String?   @db.VarChar(40)
 
+  // Flag que bloqueia o modo Atas AUTO de re-enfileirar esta reunião.
+  // True quando: (a) auto-ata já enfileirou uma vez, ou (b) user clicou "Excluir".
+  // Reset apenas por ação explícita do usuário (clique em "Criar ata" manual).
+  auto_ata_attempted       Boolean   @default(false)
+
   created_at               DateTime  @default(now()) @db.Timestamptz(6)
   updated_at               DateTime  @default(now()) @db.Timestamptz(6)
 

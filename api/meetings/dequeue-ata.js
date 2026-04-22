@@ -73,7 +73,7 @@ export default async function handler(req, res) {
       newStatus = 'artefatos_faltantes';
     }
 
-    const updated = await prisma.eppMeetStatus.update({
+    await prisma.eppMeetStatus.update({
       where: { conference_id },
       data: {
         status: newStatus,
@@ -85,6 +85,9 @@ export default async function handler(req, res) {
         processing_last_status_code: null,
         processing_last_response: null,
         data_ultimo_erro: null,
+        // Bloqueia re-enfileirar pelo modo AUTO. Só volta a ser elegível
+        // se o usuário clicar "Criar ata" manualmente (enqueue-ata reseta).
+        auto_ata_attempted: true,
         updated_at: new Date(),
       },
     });

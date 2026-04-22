@@ -44,10 +44,15 @@ export default async function handler(req, res) {
       const autoSetting = await prisma.eppAppSettings.findUnique({ where: { key: 'auto_ata' } });
       if (autoSetting?.value === 'true') {
         const autoThreshold = new Date(now.getTime() - AUTO_ATA_DELAY_MIN * 60 * 1000);
+        // Só pega reuniões que NUNCA foram tocadas pelo auto-ata (nem marcadas como
+        // excluídas pelo usuário). A flag auto_ata_attempted protege contra loops:
+        // após uma tentativa automática, se der erro ou user excluir, só um clique
+        // manual em "Criar ata" volta a reunião para elegibilidade.
         const candidates = await prisma.eppMeetStatus.findMany({
           where: {
             status: 'artefatos_completos',
             data_primeiro_artefato: { lte: autoThreshold },
+            auto_ata_attempted: false,
           },
           select: { conference_id: true },
           take: AUTO_ATA_BATCH,
@@ -55,7 +60,11 @@ export default async function handler(req, res) {
         if (candidates.length > 0) {
           const ids = candidates.map((c) => c.conference_id);
           const { count } = await prisma.eppMeetStatus.updateMany({
-            where: { conference_id: { in: ids }, status: 'artefatos_completos' },
+            where: {
+              conference_id: { in: ids },
+              status: 'artefatos_completos',
+              auto_ata_attempted: false,
+            },
             data: {
               status: 'enfileirado',
               data_enfileirado: now,
@@ -65,6 +74,7 @@ export default async function handler(req, res) {
               ata_step: null,
               ata_progress: 0,
               ata_error_step: null,
+              auto_ata_attempted: true, // bloqueia re-enfileirar automático
               updated_at: now,
             },
           });

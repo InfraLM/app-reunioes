@@ -59,6 +59,9 @@ export default async function handler(req, res) {
           ata_step: null,
           ata_progress: 0,
           ata_error_step: null,
+          // Clique manual reseta o bloqueio do modo AUTO — usuário está
+          // assumindo explicitamente uma nova tentativa.
+          auto_ata_attempted: false,
           updated_at: new Date(),
         },
         create: {

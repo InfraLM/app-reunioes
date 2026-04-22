@@ -98,6 +98,7 @@ export default async function handler(req, res) {
       data_ultimo_erro: ms.data_ultimo_erro,
       data_ata_gerada: ms.data_ata_gerada,
       queued_by: ms.queued_by,
+      auto_ata_attempted: ms.auto_ata_attempted,
       updated_at: ms.updated_at,
     } : null,
   });
