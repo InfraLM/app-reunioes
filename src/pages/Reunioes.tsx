@@ -6,9 +6,10 @@ import ReuniaoModal from '../components/Reunioes/ReuniaoModal';
 
 type SortBy = 'date_desc' | 'date_asc' | 'title_asc' | 'title_desc';
 type StatusFilter = 'all' | MeetLifecycleStatus;
+type DateFilter = 'hoje' | '48h' | 'todas' | 'range';
+type ArtefatosFilter = 'all' | '0' | '1' | '2' | '3';
 
 const PAGE_SIZE = 18;
-const CUTOFF_DATE = '2026-04-10'; // apenas reuniões desde 10/04/2026
 
 const STATUS_OPTS: { value: StatusFilter; label: string }[] = [
   { value: 'all', label: 'Todos' },
@@ -17,6 +18,21 @@ const STATUS_OPTS: { value: StatusFilter; label: string }[] = [
   { value: 'artefatos_faltantes', label: 'Faltantes' },
   { value: 'enfileirado', label: 'Na fila' },
   { value: 'erro', label: 'Erro' },
+];
+
+const DATE_OPTS: { value: DateFilter; label: string; title?: string }[] = [
+  { value: 'hoje', label: 'Hoje', title: 'Últimas 24 horas' },
+  { value: '48h', label: 'Últimas 48h', title: 'Últimas 48 horas' },
+  { value: 'todas', label: 'Todas', title: 'Sem filtro de data' },
+  { value: 'range', label: 'Datas', title: 'Intervalo de datas manual' },
+];
+
+const ARTEFATOS_OPTS: { value: ArtefatosFilter; label: string; title: string }[] = [
+  { value: 'all', label: 'Todos', title: 'Qualquer quantidade de artefatos' },
+  { value: '3', label: '3 artefatos', title: 'Gravação + transcrição + anotações' },
+  { value: '2', label: '2', title: 'Exatamente 2 dos 3 artefatos' },
+  { value: '1', label: '1', title: 'Apenas 1 dos 3 artefatos' },
+  { value: '0', label: '0', title: 'Nenhum artefato (só started/ended)' },
 ];
 
 const SORT_OPTS: { value: SortBy; label: string }[] = [
@@ -42,9 +58,10 @@ export default function ReunioesPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [sortBy, setSortBy] = useState<SortBy>('date_desc');
   const [userFilter, setUserFilter] = useState<string>('all');
+  const [dateFilter, setDateFilter] = useState<DateFilter>('hoje');
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
-  const [cutoffEnabled, setCutoffEnabled] = useState<boolean>(true);
+  const [artefatosFilter, setArtefatosFilter] = useState<ArtefatosFilter>('all');
   const [currentPage, setCurrentPage] = useState(1);
 
   const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
@@ -68,7 +85,7 @@ export default function ReunioesPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchText, statusFilter, sortBy, userFilter, dateFrom, dateTo, cutoffEnabled]);
+  }, [searchText, statusFilter, sortBy, userFilter, dateFilter, dateFrom, dateTo, artefatosFilter]);
 
   const userOptions = useMemo(() => {
     const set = new Set<string>();
@@ -112,23 +129,37 @@ export default function ReunioesPage() {
     const getDateStr = (m: MeetStatus) =>
       m.meeting_start_time || m.data_primeiro_artefato || m.governanca?.data_reuniao || null;
 
-    if (cutoffEnabled) {
+    // Calcula janela efetiva com base no filtro de data ativo.
+    let effectiveFrom: Date | null = null;
+    let effectiveTo: Date | null = null;
+    const now = new Date();
+    if (dateFilter === 'hoje') {
+      effectiveFrom = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    } else if (dateFilter === '48h') {
+      effectiveFrom = new Date(now.getTime() - 48 * 60 * 60 * 1000);
+    } else if (dateFilter === 'range') {
+      if (dateFrom) effectiveFrom = new Date(dateFrom);
+      if (dateTo) effectiveTo = new Date(`${dateTo}T23:59:59`);
+    }
+    // 'todas': nada a aplicar
+
+    if (effectiveFrom) {
       r = r.filter((m) => {
         const d = getDateStr(m);
-        return !d || d >= CUTOFF_DATE;
+        return !!d && new Date(d) >= effectiveFrom!;
       });
     }
-    if (dateFrom) {
+    if (effectiveTo) {
       r = r.filter((m) => {
         const d = getDateStr(m);
-        return !!d && d >= dateFrom;
+        return !!d && new Date(d) <= effectiveTo!;
       });
     }
-    if (dateTo) {
-      const to = dateTo + 'T23:59:59';
+    if (artefatosFilter !== 'all') {
+      const target = parseInt(artefatosFilter, 10);
       r = r.filter((m) => {
-        const d = getDateStr(m);
-        return !!d && d <= to;
+        const count = (m.has_recording ? 1 : 0) + (m.has_transcript ? 1 : 0) + (m.has_smart_note ? 1 : 0);
+        return count === target;
       });
     }
     if (userFilter !== 'all') {
@@ -159,7 +190,7 @@ export default function ReunioesPage() {
       }
     });
     return r;
-  }, [meetings, searchText, statusFilter, sortBy, userFilter, dateFrom, dateTo, cutoffEnabled]);
+  }, [meetings, searchText, statusFilter, sortBy, userFilter, dateFilter, dateFrom, dateTo, artefatosFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paginated = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
@@ -261,7 +292,7 @@ export default function ReunioesPage() {
         </div>
       </div>
 
-      {/* Filtros avançados: usuário, datas, cutoff */}
+      {/* Filtros avançados: usuário, data, artefatos */}
       <div className="bg-[#111111] border border-zinc-800 rounded-2xl px-5 py-4 mb-6 flex flex-wrap gap-3 items-center">
         <select
           value={userFilter}
@@ -276,43 +307,74 @@ export default function ReunioesPage() {
           ))}
         </select>
 
-        <div className="flex items-center gap-2">
-          <label className="text-zinc-500 text-xs font-semibold">De</label>
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            className="bg-zinc-900 border border-zinc-800 text-zinc-300 text-xs font-semibold rounded-xl px-3 py-2.5 focus:outline-none focus:border-red-600/60 cursor-pointer hover:text-white transition-colors"
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <label className="text-zinc-500 text-xs font-semibold">Até</label>
-          <input
-            type="date"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            className="bg-zinc-900 border border-zinc-800 text-zinc-300 text-xs font-semibold rounded-xl px-3 py-2.5 focus:outline-none focus:border-red-600/60 cursor-pointer hover:text-white transition-colors"
-          />
+        {/* Filtro de data — 4 botões mutuamente exclusivos */}
+        <div className="flex items-center gap-1 p-1 bg-zinc-900 border border-zinc-800 rounded-xl">
+          {DATE_OPTS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => setDateFilter(opt.value)}
+              title={opt.title}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all whitespace-nowrap ${
+                dateFilter === opt.value
+                  ? 'bg-red-600 text-white'
+                  : 'text-zinc-400 hover:text-white'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
         </div>
 
-        <button
-          onClick={() => setCutoffEnabled((v) => !v)}
-          title={`Mostrar apenas reuniões a partir de ${CUTOFF_DATE}`}
-          className={`px-3 py-2.5 rounded-xl text-xs font-semibold transition-colors whitespace-nowrap ${
-            cutoffEnabled
-              ? 'bg-red-600 text-white'
-              : 'bg-zinc-900 border border-zinc-800 text-zinc-500 hover:text-white hover:border-zinc-700'
-          }`}
-        >
-          {cutoffEnabled ? '✓' : ''} Desde 10/04/2026
-        </button>
+        {/* Inputs de data só quando dateFilter === 'range' */}
+        {dateFilter === 'range' && (
+          <>
+            <div className="flex items-center gap-2">
+              <label className="text-zinc-500 text-xs font-semibold">De</label>
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="bg-zinc-900 border border-zinc-800 text-zinc-300 text-xs font-semibold rounded-xl px-3 py-2.5 focus:outline-none focus:border-red-600/60 cursor-pointer hover:text-white transition-colors"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-zinc-500 text-xs font-semibold">Até</label>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="bg-zinc-900 border border-zinc-800 text-zinc-300 text-xs font-semibold rounded-xl px-3 py-2.5 focus:outline-none focus:border-red-600/60 cursor-pointer hover:text-white transition-colors"
+              />
+            </div>
+          </>
+        )}
 
-        {(userFilter !== 'all' || dateFrom || dateTo) && (
+        {/* Filtro de artefatos */}
+        <div className="flex items-center gap-1 p-1 bg-zinc-900 border border-zinc-800 rounded-xl">
+          {ARTEFATOS_OPTS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => setArtefatosFilter(opt.value)}
+              title={opt.title}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all whitespace-nowrap ${
+                artefatosFilter === opt.value
+                  ? 'bg-red-600 text-white'
+                  : 'text-zinc-400 hover:text-white'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
+        {(userFilter !== 'all' || dateFilter !== 'hoje' || dateFrom || dateTo || artefatosFilter !== 'all') && (
           <button
             onClick={() => {
               setUserFilter('all');
+              setDateFilter('hoje');
               setDateFrom('');
               setDateTo('');
+              setArtefatosFilter('all');
             }}
             className="ml-auto text-zinc-500 hover:text-white text-xs font-semibold transition-colors"
           >
