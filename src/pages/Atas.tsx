@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { ataService } from '../lib/api';
+import { ataService, meetingsService } from '../lib/api';
 
 type Tab = 'processando' | 'processado';
 
@@ -234,9 +234,24 @@ function ProcessingCard({ item, position, onRefresh }: { item: ProcessingItem; p
   const currentStepLabel = STEP_LABELS[currentStep] || 'Aguardando fila';
   const errorStep = item.ata_error_step;
   const errorStepLabel = errorStep ? STEP_LABELS[errorStep] || errorStep : null;
+  const [retrying, setRetrying] = useState(false);
 
   const themeBorder = isError ? 'border-red-700/60' : 'border-zinc-800';
   const themeBg = isError ? 'bg-red-950/20' : 'bg-[#111111]';
+
+  const handleRetry = async () => {
+    if (retrying) return;
+    setRetrying(true);
+    try {
+      await meetingsService.enqueueAta([item.conference_id]);
+      onRefresh();
+    } catch (err) {
+      console.error('[retry-ata] falhou:', err);
+      alert('Falha ao reenfileirar. Tente novamente.');
+    } finally {
+      setRetrying(false);
+    }
+  };
 
   return (
     <div className={`${themeBg} border ${themeBorder} rounded-2xl p-5`}>
@@ -317,6 +332,22 @@ function ProcessingCard({ item, position, onRefresh }: { item: ProcessingItem; p
         <div className="mt-3 p-3 rounded-lg bg-red-950/40 border border-red-800/60">
           <p className="text-red-400 text-xs font-semibold mb-1">Erro</p>
           <p className="text-red-300 text-xs leading-relaxed break-all">{item.processing_last_error}</p>
+        </div>
+      )}
+
+      {/* Botão Retry (só se status=erro) */}
+      {isError && (
+        <div className="mt-3 flex justify-end">
+          <button
+            onClick={handleRetry}
+            disabled={retrying}
+            className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold rounded-lg px-4 py-2 transition-all"
+          >
+            {retrying && (
+              <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            )}
+            {retrying ? 'Reenfileirando...' : 'Tentar novamente'}
+          </button>
         </div>
       )}
     </div>
