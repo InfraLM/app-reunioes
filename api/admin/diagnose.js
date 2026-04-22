@@ -57,6 +57,7 @@ export default async function handler(req, res) {
     meet_process: mp ? {
       meeting_title: mp.meeting_title,
       meeting_start_time: mp.meeting_start_time,
+      meeting_end_time: mp.meeting_end_time,
       status: mp.status,
       user_email: mp.user_email,
       has_recording: mp.has_recording,
