@@ -202,6 +202,21 @@ model EppUserPastas {
 }
 
 // ============================================================
+// Tabela: Configurações globais da aplicação (key/value)
+// Chaves atuais:
+//   - auto_ata: "true" | "false" (default false) — switch de geração
+//     automática de atas 120 min após data_primeiro_artefato
+// ============================================================
+model EppAppSettings {
+  key        String   @id @db.VarChar(100)
+  value      String?  @db.Text
+  updated_at DateTime @default(now()) @db.Timestamptz(6)
+
+  @@map("epp_app_settings")
+  @@schema("lovable")
+}
+
+// ============================================================
 // Tabela: Ciclo de vida pós-artefatos e fila de webhook
 // Status possíveis:
 //   artefatos_faltantes (🔴) | artefatos_completos (🟡) |

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { ataService, meetingsService } from '../lib/api';
+import { ataService, meetingsService, settingsService } from '../lib/api';
 
 type Tab = 'processando' | 'processado';
 
@@ -95,6 +95,7 @@ export default function AtasPage() {
   const [processed, setProcessed] = useState<ProcessedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [autoAta, setAutoAta] = useState<boolean>(false);
 
   const load = useCallback(async () => {
     try {
@@ -116,6 +117,16 @@ export default function AtasPage() {
     return () => clearInterval(id);
   }, [load]);
 
+  useEffect(() => {
+    settingsService
+      .list()
+      .then((res) => {
+        const s = (res.settings || []).find((x: { key: string; value: string | null }) => x.key === 'auto_ata');
+        setAutoAta(s?.value === 'true');
+      })
+      .catch(() => setAutoAta(false));
+  }, []);
+
   const hasErrors = useMemo(() => processing.some((p) => p.status === 'erro'), [processing]);
 
   if (loading) {
@@ -133,7 +144,15 @@ export default function AtasPage() {
         <p className="text-xs font-bold text-zinc-600 uppercase tracking-[0.2em] mb-2">Atas</p>
         <div className="flex items-end justify-between flex-wrap gap-3">
           <div>
-            <h1 className="text-4xl font-black text-white tracking-tight">Processamento</h1>
+            <div className="flex items-center gap-3 flex-wrap">
+              <h1 className="text-4xl font-black text-white tracking-tight">Processamento</h1>
+              {autoAta && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[11px] font-bold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  MODO AUTO
+                </span>
+              )}
+            </div>
             <p className="text-zinc-500 text-sm mt-2 font-normal">
               Geração de atas em tempo real · atualiza a cada 3s
               {lastUpdated && ` · ${lastUpdated.toLocaleTimeString('pt-BR')}`}
@@ -235,12 +254,13 @@ function ProcessingCard({ item, position, onRefresh }: { item: ProcessingItem; p
   const errorStep = item.ata_error_step;
   const errorStepLabel = errorStep ? STEP_LABELS[errorStep] || errorStep : null;
   const [retrying, setRetrying] = useState(false);
+  const [dequeuing, setDequeuing] = useState(false);
 
   const themeBorder = isError ? 'border-red-700/60' : 'border-zinc-800';
   const themeBg = isError ? 'bg-red-950/20' : 'bg-[#111111]';
 
   const handleRetry = async () => {
-    if (retrying) return;
+    if (retrying || dequeuing) return;
     setRetrying(true);
     try {
       await meetingsService.retryAta(item.conference_id);
@@ -250,6 +270,21 @@ function ProcessingCard({ item, position, onRefresh }: { item: ProcessingItem; p
       alert('Falha ao reenfileirar. Tente novamente.');
     } finally {
       setRetrying(false);
+    }
+  };
+
+  const handleDequeue = async () => {
+    if (retrying || dequeuing) return;
+    if (!confirm('Remover esta ata da fila? O estado do card voltará para antes de você clicar em "Criar Ata".')) return;
+    setDequeuing(true);
+    try {
+      await meetingsService.dequeueAta(item.conference_id);
+      onRefresh();
+    } catch (err) {
+      console.error('[dequeue-ata] falhou:', err);
+      alert('Falha ao remover da fila. Tente novamente.');
+    } finally {
+      setDequeuing(false);
     }
   };
 
@@ -335,12 +370,23 @@ function ProcessingCard({ item, position, onRefresh }: { item: ProcessingItem; p
         </div>
       )}
 
-      {/* Botão Retry (só se status=erro) */}
+      {/* Botões Retry + Excluir (só se status=erro) */}
       {isError && (
-        <div className="mt-3 flex justify-end">
+        <div className="mt-3 flex justify-end gap-2">
+          <button
+            onClick={handleDequeue}
+            disabled={retrying || dequeuing}
+            className="inline-flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed text-zinc-300 text-xs font-semibold rounded-lg px-4 py-2 transition-all border border-zinc-700"
+            title="Remove esta reunião da fila de ata, voltando ao estado antes de 'Criar Ata'"
+          >
+            {dequeuing && (
+              <span className="w-3 h-3 border-2 border-zinc-400 border-t-transparent rounded-full animate-spin" />
+            )}
+            {dequeuing ? 'Removendo...' : 'Excluir'}
+          </button>
           <button
             onClick={handleRetry}
-            disabled={retrying}
+            disabled={retrying || dequeuing}
             className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold rounded-lg px-4 py-2 transition-all"
           >
             {retrying && (

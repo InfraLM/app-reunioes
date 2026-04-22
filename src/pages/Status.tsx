@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { subscriptionsService, userPastasService } from '../lib/api';
+import { subscriptionsService, userPastasService, settingsService } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import type { SubscriptionsStatusResponse, UserSubscriptionStatus, UserPasta } from '../types';
 
@@ -18,6 +18,9 @@ export default function StatusPage() {
 
   const [userPastas, setUserPastas] = useState<Record<string, UserPasta>>({});
   const [editingEmail, setEditingEmail] = useState<string | null>(null);
+
+  const [autoAta, setAutoAta] = useState<boolean | null>(null);
+  const [autoAtaSaving, setAutoAtaSaving] = useState(false);
 
   const load = useCallback(async (showSpinner = true) => {
     if (showSpinner) setLoading(true);
@@ -48,10 +51,37 @@ export default function StatusPage() {
     }
   }, []);
 
+  const loadSettings = useCallback(async () => {
+    try {
+      const res = await settingsService.list();
+      const s = (res.settings || []).find((x: { key: string; value: string | null }) => x.key === 'auto_ata');
+      setAutoAta(s?.value === 'true');
+    } catch (e) {
+      console.error('Falha ao carregar settings:', e);
+      setAutoAta(false);
+    }
+  }, []);
+
   useEffect(() => {
     load(true);
     loadUserPastas();
-  }, [load, loadUserPastas]);
+    loadSettings();
+  }, [load, loadUserPastas, loadSettings]);
+
+  const handleToggleAutoAta = async () => {
+    if (autoAta === null || autoAtaSaving) return;
+    const next = !autoAta;
+    setAutoAtaSaving(true);
+    try {
+      await settingsService.update('auto_ata', next ? 'true' : 'false');
+      setAutoAta(next);
+    } catch (e) {
+      const err = e as Error & { response?: { data?: { error?: string } } };
+      alert(`Falha ao atualizar: ${err.response?.data?.error || err.message}`);
+    } finally {
+      setAutoAtaSaving(false);
+    }
+  };
 
   const setRow = (email: string, action: RowAction, msg?: string) => {
     setRowStates((prev) => ({ ...prev, [email]: { action, msg } }));
@@ -132,6 +162,42 @@ export default function StatusPage() {
           </button>
         </div>
       </header>
+
+      {isAdmin && (
+        <div className="bg-[#111111] border border-zinc-800 rounded-2xl p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <h2 className="text-white font-bold text-sm mb-1 flex items-center gap-2">
+                Atas AUTO
+                {autoAta && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[10px] font-semibold">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> ATIVO
+                  </span>
+                )}
+              </h2>
+              <p className="text-zinc-500 text-xs leading-relaxed">
+                Quando ligado, o sistema enfileira a geração de ata automaticamente <strong className="text-zinc-400">120 min</strong> após a chegada do primeiro artefato de cada reunião.
+                Com ele desligado, a ata só é gerada quando o usuário clicar em <strong className="text-zinc-400">"Criar Ata"</strong>.
+              </p>
+            </div>
+            <button
+              onClick={handleToggleAutoAta}
+              disabled={autoAta === null || autoAtaSaving}
+              role="switch"
+              aria-checked={autoAta === true}
+              className={`relative shrink-0 w-12 h-7 rounded-full transition-colors ${
+                autoAta ? 'bg-emerald-600' : 'bg-zinc-800'
+              } disabled:opacity-50 disabled:cursor-not-allowed`}
+            >
+              <span
+                className={`absolute top-0.5 left-0.5 w-6 h-6 rounded-full bg-white transition-transform ${
+                  autoAta ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
+        </div>
+      )}
 
       {globalMessage && (
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-zinc-300">

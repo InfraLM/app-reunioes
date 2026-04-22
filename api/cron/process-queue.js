@@ -7,6 +7,8 @@ const prisma = require('../../lib/prisma.cjs');
 
 const MAX_PARALLEL = 5; // limite de atas disparadas por tick
 const STUCK_MINUTES = 10; // timeout para considerar uma ata "presa" em processando
+const AUTO_ATA_DELAY_MIN = 120; // minutos após data_primeiro_artefato para auto-enfileirar
+const AUTO_ATA_BATCH = 10; // quantas reuniões auto-marcar por tick no máximo
 
 /**
  * GET /api/cron/process-queue
@@ -34,6 +36,45 @@ export default async function handler(req, res) {
   try {
     const now = new Date();
     const stuckThreshold = new Date(now.getTime() - STUCK_MINUTES * 60 * 1000);
+
+    // 0. Modo AUTO: se setting auto_ata='true', marca como 'enfileirado' toda reunião
+    //    em 'artefatos_completos' cujo primeiro artefato chegou há > AUTO_ATA_DELAY_MIN.
+    //    O próprio cron cai no bloco seguinte e dispara generate-ata normalmente.
+    try {
+      const autoSetting = await prisma.eppAppSettings.findUnique({ where: { key: 'auto_ata' } });
+      if (autoSetting?.value === 'true') {
+        const autoThreshold = new Date(now.getTime() - AUTO_ATA_DELAY_MIN * 60 * 1000);
+        const candidates = await prisma.eppMeetStatus.findMany({
+          where: {
+            status: 'artefatos_completos',
+            data_primeiro_artefato: { lte: autoThreshold },
+          },
+          select: { conference_id: true },
+          take: AUTO_ATA_BATCH,
+        });
+        if (candidates.length > 0) {
+          const ids = candidates.map((c) => c.conference_id);
+          const { count } = await prisma.eppMeetStatus.updateMany({
+            where: { conference_id: { in: ids }, status: 'artefatos_completos' },
+            data: {
+              status: 'enfileirado',
+              data_enfileirado: now,
+              queued_by: 'auto',
+              processing_attempt_count: { increment: 1 },
+              processing_last_error: null,
+              ata_step: null,
+              ata_progress: 0,
+              ata_error_step: null,
+              updated_at: now,
+            },
+          });
+          console.log(`[process-queue] auto-ata: ${count} reunião(ões) enfileirada(s) (${ids.map((i) => i.slice(-12)).join(',')})`);
+        }
+      }
+    } catch (autoErr) {
+      // Não bloqueia o cron se auto-ata falhar — próximo tick tenta de novo
+      console.error(`[process-queue] auto-ata falhou: ${autoErr.message}`);
+    }
 
     // 1. Pega enfileirados (novos)
     const enqueued = await prisma.eppMeetStatus.findMany({

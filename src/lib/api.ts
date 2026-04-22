@@ -97,6 +97,24 @@ export const meetingsService = {
     });
     return response.data;
   },
+  dequeueAta: async (conferenceId: string) => {
+    const response = await api.post('/meetings/dequeue-ata', {
+      conference_id: conferenceId,
+    });
+    return response.data;
+  },
+};
+
+// Serviço de configurações globais (admin)
+export const settingsService = {
+  list: async () => {
+    const response = await api.get('/admin/settings');
+    return response.data;
+  },
+  update: async (key: string, value: string | null) => {
+    const response = await api.patch('/admin/settings', { key, value });
+    return response.data;
+  },
 };
 
 // Serviço de progresso de geração de ata (Processamento)
