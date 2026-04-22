@@ -140,9 +140,9 @@ export default function ReuniaoCard({ meeting, onClick, onCreateAta, actionLoadi
     meeting.status === 'erro';
 
   const artefatos = [
-    { label: 'Gravação', ok: meeting.has_recording, link: meeting.recording_drive_link },
-    { label: 'Transcrição', ok: meeting.has_transcript, link: meeting.transcript_drive_link },
-    { label: 'Anotações', ok: meeting.has_smart_note, link: meeting.smart_note_drive_link },
+    { label: 'Gravação',    ok: meeting.has_recording,  link: meeting.recording_drive_link,  missing: 'Não gravada' },
+    { label: 'Transcrição', ok: meeting.has_transcript, link: meeting.transcript_drive_link, missing: 'Não transcrita' },
+    { label: 'Anotações',   ok: meeting.has_smart_note, link: meeting.smart_note_drive_link, missing: 'Sem anotações' },
   ];
 
   return (
@@ -215,7 +215,7 @@ export default function ReuniaoCard({ meeting, onClick, onCreateAta, actionLoadi
             ) : a.ok ? (
               <span className="text-zinc-600 italic">Processando...</span>
             ) : (
-              <span className="text-zinc-700">—</span>
+              <span className="text-zinc-600 italic">{a.missing}</span>
             )}
           </div>
         ))}
