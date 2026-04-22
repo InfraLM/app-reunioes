@@ -26,6 +26,22 @@ const { syncMeetStatus, STATUS_POS_ENVIO } = require('../lib/meet-status');
 
 const MAX_MEETS_PER_RUN = 5;
 
+/** Títulos considerados "padrão Meet" — candidatos para ser substituídos
+ *  pelo título do Calendar (quando disponível) ou pela IA na geração de ata. */
+function isGenericMeetTitle(title) {
+  if (!title || typeof title !== 'string') return true;
+  const n = title
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .trim();
+  if (!n) return true;
+  if (n === 'reuniao instantanea') return true;
+  if (n === 'reuniao do google meet') return true;
+  if (/^reuniao iniciada as\b/.test(n)) return true;
+  return false;
+}
+
 /**
  * Converte email em nome de pasta no Drive.
  * yuri.ribeiro@liberdademedicaedu.com.br → "Yuri Ribeiro"
@@ -208,7 +224,7 @@ async function processConference(conferenceId) {
 
   // 2. Buscar metadados da reunião (só 1x)
   console.log(`[worker] step 2: metadados meet ${conferenceId.slice(-20)}`);
-  if (!mp.meeting_title || mp.meeting_title === 'Reunião do Google Meet' || mp.meeting_title === 'Reunião instantânea' || !mp.meeting_start_time) {
+  if (isGenericMeetTitle(mp.meeting_title) || !mp.meeting_start_time) {
     try {
       const details = await getConferenceDetails(conferenceId, mp.user_email);
       const title = details?.space?.displayName || null;
@@ -238,7 +254,7 @@ async function processConference(conferenceId) {
   try {
     const afterUrls = await prisma.eppMeetProcess.findUnique({ where: { conference_id: conferenceId } });
     console.log(`[worker] step 2c: current title="${afterUrls?.meeting_title || 'null'}"`);
-    const needsTitle = !afterUrls.meeting_title || afterUrls.meeting_title === 'Reunião do Google Meet' || afterUrls.meeting_title === 'Reunião instantânea';
+    const needsTitle = isGenericMeetTitle(afterUrls.meeting_title);
     if (needsTitle) {
       let titleFromFile = null;
       const candidates = [

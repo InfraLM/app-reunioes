@@ -29,6 +29,26 @@ const STEPS = {
   concluido:          { label: 'Concluído', progress: 100 },
 };
 
+/**
+ * Retorna true se o título for genérico (padrão Meet quando não há evento no Calendar).
+ * Usado para decidir se o título gerado pela IA deve sobrescrever o atual.
+ * Preserva títulos legítimos do Google Calendar (ex: "Comitê XYZ", "1:1 Fulano").
+ */
+function isGenericTitle(title) {
+  if (!title || typeof title !== 'string') return true;
+  const normalized = title
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .trim();
+  if (!normalized) return true;
+  if (normalized === 'reuniao instantanea') return true;
+  if (normalized === 'reuniao do google meet') return true;
+  // Padrão dos docs do Gemini: "Reunião iniciada às 2026/04/16 17:10 GMT-03:00 - Anotações do Gemini"
+  if (/^reuniao iniciada as\b/.test(normalized)) return true;
+  return false;
+}
+
 async function setStep(conferenceId, stepKey, extra = {}) {
   const s = STEPS[stepKey];
   const data = {
@@ -221,12 +241,15 @@ export default async function handler(req, res) {
       update: governanca,
     });
 
-    // Step 7 — Atualizar meet_status (incluindo meeting_title extraído pela IA)
+    // Step 7 — Atualizar meet_status. Só sobrescreve meeting_title se o atual
+    // for genérico ("Reunião instantânea" etc.); se veio título legítimo do
+    // Calendar (via Meet API displayName), preserva.
+    const shouldOverwriteTitle = ataJson.titulo_reuniao && isGenericTitle(mp.meeting_title);
     await prisma.eppMeetStatus.update({
       where: { conference_id: conferenceId },
       data: {
         status: 'ata_gerada',
-        ...(ataJson.titulo_reuniao && { meeting_title: ataJson.titulo_reuniao }),
+        ...(shouldOverwriteTitle && { meeting_title: ataJson.titulo_reuniao }),
         ata_step: 'concluido',
         ata_progress: STEPS.concluido.progress,
         ata_step_started_at: new Date(),
