@@ -167,6 +167,7 @@ export interface RecentMeeting {
   user_email: string;
   meeting_title: string | null;
   meeting_start_time: string | null;
+  meeting_end_time: string | null;
   first_event_at: string;
   last_event_at: string;
   expires_at: string;

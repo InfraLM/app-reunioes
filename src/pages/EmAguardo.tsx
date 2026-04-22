@@ -1,15 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { monitorService } from '../lib/api';
 import type { RecentMeeting } from '../types';
-
-function formatResponsavel(raw: string | null): string {
-  if (!raw) return 'Desconhecido';
-  const local = raw.includes('@') ? raw.split('@')[0] : raw;
-  return local
-    .split('.')
-    .map((p) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase())
-    .join(' ');
-}
+import { formatDate, formatTime, formatDuration, formatResponsavel } from '../lib/format';
 
 function Checkbox({ checked, label, link }: { checked: boolean; label: string; link?: string | null }) {
   const content = (
@@ -68,6 +60,10 @@ function RecentCard({ meeting }: { meeting: RecentMeeting }) {
       ? 'border-amber-700/50 hover:border-amber-500/60'
       : 'border-zinc-800 hover:border-zinc-700';
 
+  const temArtefato = meeting.has_recording || meeting.has_transcript || meeting.has_smart_note;
+  const startForDisplay = meeting.meeting_start_time || meeting.first_event_at;
+  const endForDisplay = meeting.meeting_end_time || (meeting.has_ended ? meeting.last_event_at : null);
+
   return (
     <div className={`bg-[#111111] border ${borderColor} rounded-2xl overflow-hidden transition-all duration-200`}>
       {/* Header */}
@@ -79,6 +75,30 @@ function RecentCard({ meeting }: { meeting: RecentMeeting }) {
           <p className="text-zinc-500 text-xs mt-1 truncate">{formatResponsavel(meeting.user_email)}</p>
         </div>
         <TimeBadge minutes={meeting.minutes_remaining} />
+      </div>
+
+      {/* Data/Horário/Duração */}
+      <div className="px-5 py-3 border-b border-zinc-800/60 space-y-1.5">
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-zinc-500">Data</span>
+          <span className="text-zinc-300 font-medium">{formatDate(startForDisplay)}</span>
+        </div>
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-zinc-500">Horário</span>
+          <span className="text-zinc-300 font-medium">
+            {formatTime(startForDisplay) || '—'}
+            {' – '}
+            {formatTime(endForDisplay) || '—'}
+          </span>
+        </div>
+        {formatDuration(startForDisplay, endForDisplay) && (
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-zinc-500">Duração</span>
+            <span className="text-zinc-300 font-medium">
+              {formatDuration(startForDisplay, endForDisplay)}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Checkboxes */}
@@ -98,9 +118,10 @@ function RecentCard({ meeting }: { meeting: RecentMeeting }) {
             href={meeting.drive_folder_link}
             target="_blank"
             rel="noreferrer"
-            className="text-red-500 hover:text-red-400 font-semibold transition-colors"
+            className={`font-semibold transition-colors ${temArtefato ? 'text-red-500 hover:text-red-400' : 'text-zinc-500 hover:text-zinc-400'}`}
+            title={temArtefato ? 'Abrir pasta no Drive' : 'Pasta criada mas sem artefatos (reunião sem gravação/transcrição)'}
           >
-            Pasta no Drive
+            {temArtefato ? 'Pasta no Drive' : 'Pasta (vazia)'}
           </a>
         )}
       </div>

@@ -77,6 +77,9 @@ export default async function handler(req, res) {
           recording_drive_link: true,
           transcript_drive_link: true,
           smart_note_drive_link: true,
+          recording_original_link: true,
+          transcript_original_link: true,
+          smart_note_original_link: true,
         },
       })
     : [];
@@ -99,6 +102,7 @@ export default async function handler(req, res) {
       user_email: r.user_email,
       meeting_title: mp.meeting_title || null,
       meeting_start_time: mp.meeting_start_time || null,
+      meeting_end_time: mp.meeting_end_time || null,
       first_event_at: r.first_event_at,
       last_event_at: r.last_event_at,
       expires_at: expiresAt,

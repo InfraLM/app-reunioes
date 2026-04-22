@@ -171,6 +171,8 @@ async function processConference(conferenceId) {
       user_id: aggregate.user_id,
       meet_space_id: aggregate.meet_space_id,
       last_event_at: aggregate.last_event_at,
+      ...(aggregate.meeting_start_time && { meeting_start_time: aggregate.meeting_start_time }),
+      ...(aggregate.meeting_end_time && { meeting_end_time: aggregate.meeting_end_time }),
       has_recording: aggregate.has_recording,
       has_transcript: aggregate.has_transcript,
       has_smart_note: aggregate.has_smart_note,
@@ -190,6 +192,8 @@ async function processConference(conferenceId) {
       status: 'processing',
       first_event_at: aggregate.first_event_at,
       last_event_at: aggregate.last_event_at,
+      meeting_start_time: aggregate.meeting_start_time,
+      meeting_end_time: aggregate.meeting_end_time,
       has_recording: aggregate.has_recording,
       has_transcript: aggregate.has_transcript,
       has_smart_note: aggregate.has_smart_note,
@@ -620,6 +624,8 @@ function aggregateEvents(events) {
     meet_space_id: null,
     first_event_at: events[0].received_at,
     last_event_at: events[events.length - 1].received_at,
+    meeting_start_time: null, // event_timestamp do evento 'started' (horário real do Google)
+    meeting_end_time: null,   // event_timestamp do evento 'ended'
     has_recording: false,
     has_transcript: false,
     has_smart_note: false,
@@ -634,6 +640,14 @@ function aggregateEvents(events) {
     if (!agg.user_email && e.user_email) agg.user_email = e.user_email;
     if (!agg.user_id && e.user_id) agg.user_id = e.user_id;
     if (!agg.meet_space_id && e.meet_space_id) agg.meet_space_id = e.meet_space_id;
+
+    // Horários reais da reunião vêm do event_timestamp dos eventos started/ended
+    if (e.event_type === 'started' && e.event_timestamp && !agg.meeting_start_time) {
+      agg.meeting_start_time = e.event_timestamp;
+    }
+    if (e.event_type === 'ended' && e.event_timestamp) {
+      agg.meeting_end_time = e.event_timestamp;
+    }
 
     // Tenta resource_name do campo direto, fallback: extrai do raw_payload
     const resName = e.resource_name || extractResourceFromPayload(e.raw_payload, e.event_type);
