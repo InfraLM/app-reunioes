@@ -46,6 +46,7 @@ export default async function handler(req, res) {
     raw_smartNote_name: e.raw_payload?.smartNote?.name || null,
     raw_recording_name: e.raw_payload?.recording?.name || null,
     raw_transcript_name: e.raw_payload?.transcript?.name || null,
+    event_timestamp: e.event_timestamp,
     received_at: e.received_at,
   }));
 
