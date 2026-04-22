@@ -19,6 +19,7 @@ const {
   extractMeetingTitleFromFileName,
   listFilesInFolder,
   classifyDriveFile,
+  copyFileToFolder,
 } = require('../lib/google');
 const config = require('../lib/config');
 const { syncMeetStatus, STATUS_POS_ENVIO } = require('../lib/meet-status');
@@ -306,11 +307,16 @@ async function processConference(conferenceId) {
     }
   }
 
-  // 4. Descobrir artefatos já presentes na subpasta (Drive é a fonte da verdade).
-  //    Admin/Meet deposita os arquivos direto; worker só lê e popula links.
+  // 4. Descobrir artefatos já presentes na subpasta (admin/externo podem ter depositado).
   const latest = await prisma.eppMeetProcess.findUnique({ where: { conference_id: conferenceId } });
   if (latest.drive_folder_id) {
     await discoverArtifactsInFolder(latest);
+  }
+
+  // 4b. Copiar artefatos faltantes do Drive original (pasta do usuário) para a subpasta destino.
+  const afterDiscover = await prisma.eppMeetProcess.findUnique({ where: { conference_id: conferenceId } });
+  if (afterDiscover.drive_folder_id) {
+    await copyMissingArtifactsToFolder(afterDiscover);
   }
 
   // 5. Reler estado final e atualizar meet_status
@@ -475,7 +481,10 @@ async function resolveArtifactUrls(conferenceId, userEmail) {
  * Lista arquivos da subpasta `drive_folder_id` e classifica cada um como
  * recording / transcript / smart_note. Popula os campos *_drive_file_id,
  * *_drive_link, *_copied_at e has_* com base nos arquivos encontrados.
- * Não copia nada — assume que admin ou Meet já depositou os arquivos.
+ *
+ * Só descobre — não copia. A cópia do original para cá é feita por
+ * copyMissingArtifactsToFolder logo depois, para os kinds que este passo
+ * não detectou (ou seja, admin não depositou manualmente).
  */
 async function discoverArtifactsInFolder(mp) {
   let files;
@@ -515,6 +524,80 @@ async function discoverArtifactsInFolder(mp) {
       data: updates,
     });
     console.log(`[worker] discover OK: rec=${!!byKind.recording} trs=${!!byKind.transcript} sn=${!!byKind.smart_note}`);
+  }
+}
+
+/**
+ * Copia artefatos do Drive original (pasta do usuário) para a subpasta destino,
+ * para cada kind que tem link_original mas ainda não foi copiado.
+ *
+ * Dedupe: se dois kinds apontam para o mesmo fileId (Meet às vezes compartilha
+ * o mesmo Docs entre transcript e smart_note), copia uma vez só e reutiliza o
+ * resultado para ambos.
+ *
+ * Erros por kind ficam isolados em {kind}_error; os outros continuam.
+ */
+async function copyMissingArtifactsToFolder(mp) {
+  const kinds = [
+    { k: 'recording',  link: mp.recording_original_link,  copiedAt: mp.recording_copied_at,  hasIt: mp.has_recording },
+    { k: 'transcript', link: mp.transcript_original_link, copiedAt: mp.transcript_copied_at, hasIt: mp.has_transcript },
+    { k: 'smart_note', link: mp.smart_note_original_link, copiedAt: mp.smart_note_copied_at, hasIt: mp.has_smart_note },
+  ];
+
+  const copiedByFileId = {}; // fileId original → { id, webViewLink } do arquivo copiado
+
+  for (const { k, link, copiedAt, hasIt } of kinds) {
+    if (!hasIt) continue;          // Pub/Sub ainda não notificou esse kind
+    if (copiedAt) continue;         // já está na pasta_destino (discover achou ou cópia anterior)
+    if (!link) continue;            // link original não resolvido ainda — próximo tick
+
+    const fileId = extractFileIdFromDriveUrl(link);
+    if (!fileId) {
+      console.warn(`[worker] copy: fileId inválido para ${k}: ${link}`);
+      continue;
+    }
+
+    // Dedupe: se outro kind já copiou esse mesmo fileId nesta iteração, só aponta pra ele
+    if (copiedByFileId[fileId]) {
+      const reused = copiedByFileId[fileId];
+      await prisma.eppMeetProcess.update({
+        where: { conference_id: mp.conference_id },
+        data: {
+          [`${k}_drive_file_id`]: reused.id,
+          [`${k}_drive_link`]: reused.webViewLink || null,
+          [`${k}_copied_at`]: new Date(),
+          [`${k}_error`]: null,
+          updated_at: new Date(),
+        },
+      }).catch((e) => console.warn(`[worker] copy reuse update falhou ${k}: ${e.message}`));
+      console.log(`[worker] copy REUSE ${k}: fileId ${fileId.slice(-12)} já copiado`);
+      continue;
+    }
+
+    try {
+      const copied = await copyFileToFolder(fileId, mp.drive_folder_id, null, mp.user_email);
+      copiedByFileId[fileId] = copied;
+      await prisma.eppMeetProcess.update({
+        where: { conference_id: mp.conference_id },
+        data: {
+          [`${k}_drive_file_id`]: copied.id,
+          [`${k}_drive_link`]: copied.webViewLink || null,
+          [`${k}_copied_at`]: new Date(),
+          [`${k}_error`]: null,
+          updated_at: new Date(),
+        },
+      });
+      console.log(`[worker] copy OK ${k}: ${copied.id} (${copied.name || 'sem nome'})`);
+    } catch (err) {
+      console.error(`[worker] copy FAIL ${k} fileId=${fileId}: ${err.message}`);
+      await prisma.eppMeetProcess.update({
+        where: { conference_id: mp.conference_id },
+        data: {
+          [`${k}_error`]: String(err.message).slice(0, 500),
+          updated_at: new Date(),
+        },
+      }).catch(() => {});
+    }
   }
 }
 
