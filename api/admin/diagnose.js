@@ -70,6 +70,13 @@ export default async function handler(req, res) {
       recording_drive_link: mp.recording_drive_link,
       transcript_drive_link: mp.transcript_drive_link,
       smart_note_drive_link: mp.smart_note_drive_link,
+      recording_copied_at: mp.recording_copied_at,
+      transcript_copied_at: mp.transcript_copied_at,
+      smart_note_copied_at: mp.smart_note_copied_at,
+      recording_error: mp.recording_error,
+      transcript_error: mp.transcript_error,
+      smart_note_error: mp.smart_note_error,
+      drive_folder_id: mp.drive_folder_id,
       drive_folder_link: mp.drive_folder_link,
     } : null,
     meet_status: ms ? {
