@@ -12,10 +12,9 @@ const config = require('../lib/config');
  * POST /api/webhooks/google-events
  *
  * Responsabilidade única: registrar o evento bruto em epp_evento_track e responder 2xx.
- * Todo processamento (UPSERT em meet_process, cópias de artefato, webhook final) é
- * feito de forma assíncrona pelo worker /api/cron/process-events.
- *
- * Também dispara um wakeup opcional no worker via QStash (delay curto).
+ * Todo processamento (UPSERT em meet_process, UPSERT em meet_status) é feito de forma
+ * assíncrona pelo worker /api/cron/process-events — acionado a cada minuto por Vercel Cron
+ * (ver vercel.json).
  */
 
 /** Tipos derivados a partir do ce-type do CloudEvent. */
@@ -74,32 +73,6 @@ function extractUserIdFromSubject(subject) {
   if (!subject) return null;
   const match = subject.match(/users\/(\d+)|\/(\d+)$/);
   return match ? (match[1] || match[2]) : null;
-}
-
-/**
- * Acorda o worker de processamento via QStash (delay curto).
- * Se QStash não estiver configurado, apenas loga.
- */
-async function wakeProcessWorker() {
-  const qstashToken = process.env.QSTASH_TOKEN;
-  const appUrl = process.env.APP_URL;
-  if (!qstashToken || !appUrl) return;
-
-  const targetUrl = `${appUrl}/api/cron/process-events`;
-  try {
-    await fetch('https://qstash.upstash.io/v2/publish/' + encodeURIComponent(targetUrl), {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${qstashToken}`,
-        'Content-Type': 'application/json',
-        'Upstash-Delay': '30s',
-        'Upstash-Forward-Authorization': `Bearer ${process.env.CRON_SECRET || ''}`,
-      },
-      body: JSON.stringify({ trigger: 'event_received' }),
-    });
-  } catch (error) {
-    logger.warn('Falha ao acordar worker via QStash', { error: error.message });
-  }
 }
 
 export default async function handler(req, res) {
@@ -185,11 +158,7 @@ export default async function handler(req, res) {
       }
     }
 
-    if (isMonitored && conferenceId) {
-      console.log('[webhook] wake worker QStash');
-      wakeProcessWorker().catch((e) => console.warn('[webhook] wake falhou', e.message));
-    }
-
+    // Processamento é feito por /api/cron/process-events (Vercel Cron a cada 1 min).
     console.log(`[webhook] done ${Date.now() - startTime}ms`);
     return res.status(200).send('ok');
   } catch (error) {

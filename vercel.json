@@ -5,7 +5,8 @@
     }
   },
   "crons": [
-    { "path": "/api/cron/process-queue", "schedule": "* * * * *" }
+    { "path": "/api/cron/process-queue",  "schedule": "* * * * *" },
+    { "path": "/api/cron/process-events", "schedule": "* * * * *" }
   ],
   "rewrites": [
     {

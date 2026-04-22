@@ -209,11 +209,12 @@ export default async function handler(req, res) {
       update: governanca,
     });
 
-    // Step 7 — Atualizar meet_status
+    // Step 7 — Atualizar meet_status (incluindo meeting_title extraído pela IA)
     await prisma.eppMeetStatus.update({
       where: { conference_id: conferenceId },
       data: {
         status: 'ata_gerada',
+        ...(ataJson.titulo_reuniao && { meeting_title: ataJson.titulo_reuniao }),
         ata_step: 'concluido',
         ata_progress: STEPS.concluido.progress,
         ata_step_started_at: new Date(),

@@ -52,7 +52,12 @@ export default async function handler(req, res) {
 
   try {
     const authHeader = req.headers.authorization;
-    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    const isVercelCron = !!req.headers['x-vercel-cron'];
+    if (
+      process.env.CRON_SECRET
+      && !isVercelCron
+      && authHeader !== `Bearer ${process.env.CRON_SECRET}`
+    ) {
       logger.warn('[worker] 401 — token inválido');
       return res.status(401).json({ error: 'Unauthorized' });
     }
