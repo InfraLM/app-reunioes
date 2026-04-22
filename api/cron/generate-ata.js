@@ -88,7 +88,19 @@ export default async function handler(req, res) {
 
     const mp = await prisma.eppMeetProcess.findUnique({ where: { conference_id: conferenceId } });
     if (!mp) {
-      await markError(conferenceId, 'meet_process não encontrado', 'inicializando');
+      // Ata órfã: existe em meet_status mas não em meet_process (restos de backfill
+      // antigo). Marca auto_ata_attempted=true para não entrar em loop com o auto-ata.
+      await prisma.eppMeetStatus.update({
+        where: { conference_id: conferenceId },
+        data: {
+          status: 'erro',
+          ata_error_step: 'inicializando',
+          processing_last_error: 'meet_process não encontrado',
+          data_ultimo_erro: new Date(),
+          auto_ata_attempted: true,
+          updated_at: new Date(),
+        },
+      }).catch((e) => logger.warn('[generate-ata] falha ao marcar órfã', { error: e.message }));
       return res.status(200).json({ ok: false, error: 'not found' });
     }
 

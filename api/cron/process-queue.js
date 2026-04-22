@@ -48,15 +48,18 @@ export default async function handler(req, res) {
         // excluídas pelo usuário). A flag auto_ata_attempted protege contra loops:
         // após uma tentativa automática, se der erro ou user excluir, só um clique
         // manual em "Criar ata" volta a reunião para elegibilidade.
-        const candidates = await prisma.eppMeetStatus.findMany({
-          where: {
-            status: 'artefatos_completos',
-            data_primeiro_artefato: { lte: autoThreshold },
-            auto_ata_attempted: false,
-          },
-          select: { conference_id: true },
-          take: AUTO_ATA_BATCH,
-        });
+        // INNER JOIN com epp_meet_process garante que só enfileiramos reuniões
+        // com mp (aggregator) existente — evita 'meet_process não encontrado'
+        // em generate-ata para rows órfãs criadas por backfills históricos.
+        const candidates = await prisma.$queryRaw`
+          SELECT ms.conference_id
+          FROM lovable.epp_meet_status ms
+          INNER JOIN lovable.epp_meet_process mp ON mp.conference_id = ms.conference_id
+          WHERE ms.status = 'artefatos_completos'
+            AND ms.data_primeiro_artefato <= ${autoThreshold}
+            AND ms.auto_ata_attempted = false
+          LIMIT ${AUTO_ATA_BATCH}
+        `;
         if (candidates.length > 0) {
           const ids = candidates.map((c) => c.conference_id);
           const { count } = await prisma.eppMeetStatus.updateMany({

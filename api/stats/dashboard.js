@@ -6,7 +6,37 @@ const require = createRequire(import.meta.url);
 const jwt = require('jsonwebtoken');
 const prisma = require('../../lib/prisma.cjs');
 
-const CUTOFF_DATE = new Date('2026-04-10T00:00:00Z');
+const CUTOFF_DATE = new Date('2026-04-09T00:00:00Z');
+
+const GENERIC_TITLES = new Set([
+  'reuniao instantanea',
+  'reuniao do google meet',
+]);
+
+/** Remove acentos e normaliza para comparação case-insensitive. */
+function normalizeTitle(title) {
+  if (!title || typeof title !== 'string') return '';
+  return title
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .trim();
+}
+
+const COMITE_RE = /\bcomite[s]?\b/i;
+const ONE_ON_ONE_RE = /(\b1\s*[:xX×-]\s*1\b|\bone[\s-]?(on|to)[\s-]?one\b)/i;
+
+/** Classifica um título em comitê / 1:1 usando regex normalizadas. */
+function classifyTitle(rawTitle) {
+  const normalized = normalizeTitle(rawTitle);
+  if (!normalized || GENERIC_TITLES.has(normalized)) {
+    return { isComite: false, isOneOnOne: false };
+  }
+  return {
+    isComite: COMITE_RE.test(normalized),
+    isOneOnOne: ONE_ON_ONE_RE.test(normalized),
+  };
+}
 
 /**
  * GET /api/stats/dashboard
@@ -35,26 +65,41 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: 'Token inválido' });
     }
 
-    const meetings = await prisma.eppMeetProcess.findMany({
-      where: {
-        OR: [
-          { meeting_start_time: { gte: CUTOFF_DATE } },
-          { meeting_start_time: null, first_event_at: { gte: CUTOFF_DATE } },
-        ],
-      },
-      select: {
-        conference_id: true,
-        user_email: true,
-        meeting_title: true,
-        meeting_start_time: true,
-        meeting_end_time: true,
-        has_recording: true,
-        has_transcript: true,
-        has_smart_note: true,
-        first_event_at: true,
-        status: true,
-      },
-    });
+    const [meetings, governancas] = await Promise.all([
+      prisma.eppMeetProcess.findMany({
+        where: {
+          OR: [
+            { meeting_start_time: { gte: CUTOFF_DATE } },
+            { meeting_start_time: null, first_event_at: { gte: CUTOFF_DATE } },
+          ],
+        },
+        select: {
+          conference_id: true,
+          user_email: true,
+          meeting_title: true,
+          meeting_start_time: true,
+          meeting_end_time: true,
+          has_recording: true,
+          has_transcript: true,
+          has_smart_note: true,
+          first_event_at: true,
+          status: true,
+        },
+      }),
+      // Governanca traz o titulo_reuniao gerado pela IA a partir da transcrição
+      // — é mais fiel ao que foi marcado no Calendar (ex: "Comitê MBX",
+      // "1:1 Fulano") que o meeting_title do Meet API, que muitas vezes fica
+      // "Reunião instantânea".
+      prisma.eppReunioesGovernanca.findMany({
+        select: { conference_id: true, titulo_reuniao: true },
+      }),
+    ]);
+    const govTitleMap = new Map(
+      governancas.filter((g) => g.titulo_reuniao).map((g) => [g.conference_id, g.titulo_reuniao])
+    );
+
+    /** Título priorizando governanca (IA) sobre meeting_title (Meet/Drive). */
+    const bestTitle = (m) => govTitleMap.get(m.conference_id) || m.meeting_title || null;
 
     const total = meetings.length;
 
@@ -105,23 +150,28 @@ export default async function handler(req, res) {
       count: b.count,
     }));
 
-    // Comitês: título contém "comitê" ou "comitês" (case-insensitive, aceita "comite")
-    const comiteRe = /comit[êe]s?/i;
+    // Classifica cada reunião pelo melhor título disponível (governanca > meeting_title),
+    // aplicando regex normalizadas (acentos + case + separadores variados em 1:1).
     let comiteCount = 0;
+    let oneOnOneCount = 0;
+    let tituloGenericoCount = 0;
     for (const m of meetings) {
-      if (m.meeting_title && comiteRe.test(m.meeting_title)) comiteCount += 1;
+      const title = bestTitle(m);
+      if (!title) {
+        tituloGenericoCount += 1;
+        continue;
+      }
+      const { isComite, isOneOnOne } = classifyTitle(title);
+      if (isComite) comiteCount += 1;
+      if (isOneOnOne) oneOnOneCount += 1;
+      if (!isComite && !isOneOnOne && GENERIC_TITLES.has(normalizeTitle(title))) {
+        tituloGenericoCount += 1;
+      }
     }
     const comitePie = [
       { name: 'Comitês', value: comiteCount },
       { name: 'Outras', value: Math.max(0, total - comiteCount) },
     ];
-
-    // 1:1 — título contém "1:1", "1x1", "one-on-one" (case-insensitive, aceita espaços)
-    const oneOnOneRe = /(\b1\s*[:xX×]\s*1\b|one[\s-]?on[\s-]?one)/i;
-    let oneOnOneCount = 0;
-    for (const m of meetings) {
-      if (m.meeting_title && oneOnOneRe.test(m.meeting_title)) oneOnOneCount += 1;
-    }
     const oneOnOnePie = [
       { name: '1:1', value: oneOnOneCount },
       { name: 'Outras', value: Math.max(0, total - oneOnOneCount) },
@@ -166,6 +216,7 @@ export default async function handler(req, res) {
       comite_pie: comitePie,
       status_dist: statusDist,
       artifacts_counts: artifactsCounts,
+      titulos_genericos: tituloGenericoCount,
     });
   } catch (err) {
     console.error('[stats/dashboard] ERRO:', err.message);
