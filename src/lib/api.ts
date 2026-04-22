@@ -91,6 +91,12 @@ export const meetingsService = {
     });
     return response.data;
   },
+  retryAta: async (conferenceId: string) => {
+    const response = await api.post('/meetings/retry-ata', {
+      conference_id: conferenceId,
+    });
+    return response.data;
+  },
 };
 
 // Serviço de progresso de geração de ata (Processamento)

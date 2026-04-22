@@ -243,7 +243,7 @@ function ProcessingCard({ item, position, onRefresh }: { item: ProcessingItem; p
     if (retrying) return;
     setRetrying(true);
     try {
-      await meetingsService.enqueueAta([item.conference_id]);
+      await meetingsService.retryAta(item.conference_id);
       onRefresh();
     } catch (err) {
       console.error('[retry-ata] falhou:', err);
