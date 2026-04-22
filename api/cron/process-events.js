@@ -108,30 +108,34 @@ export default async function handler(req, res) {
 }
 
 async function findPendingConferenceIds(limit) {
-  // Meets em meet_process que ainda não completaram (status 'pending' ou 'processing')
-  const pending = await prisma.eppMeetProcess.findMany({
-    where: { status: { notIn: ['complete', 'error'] } },
-    select: { conference_id: true },
-    orderBy: { last_event_at: 'asc' },
-    take: limit,
-  });
-  const existing = new Set(pending.map((p) => p.conference_id));
+  // 1. Prioridade: conferences recém-recebidas via webhook (sem meet_process ainda)
+  const newRows = await prisma.$queryRaw`
+    SELECT DISTINCT e.conference_id
+    FROM lovable.epp_evento_track e
+    LEFT JOIN lovable.epp_meet_process mp ON mp.conference_id = e.conference_id
+    WHERE e.is_monitored = true
+      AND e.conference_id IS NOT NULL
+      AND mp.conference_id IS NULL
+    ORDER BY e.conference_id
+    LIMIT ${limit}
+  `;
+  const existing = new Set(newRows.map((r) => r.conference_id));
 
-  const needed = limit - pending.length;
+  // 2. Completa com meet_process pending/processing, mas só os não tocados nos últimos 2 min
+  //    (evita re-processar a mesma a cada tick quando nada mudou)
+  const needed = limit - existing.size;
   if (needed > 0) {
-    const rows = await prisma.$queryRaw`
-      SELECT DISTINCT e.conference_id
-      FROM lovable.epp_evento_track e
-      LEFT JOIN lovable.epp_meet_process mp ON mp.conference_id = e.conference_id
-      WHERE e.is_monitored = true
-        AND e.conference_id IS NOT NULL
-        AND mp.conference_id IS NULL
-      ORDER BY e.conference_id
-      LIMIT ${needed}
-    `;
-    for (const r of rows) {
-      if (!existing.has(r.conference_id)) existing.add(r.conference_id);
-    }
+    const staleThreshold = new Date(Date.now() - 2 * 60 * 1000);
+    const pending = await prisma.eppMeetProcess.findMany({
+      where: {
+        status: { notIn: ['complete', 'error'] },
+        updated_at: { lt: staleThreshold },
+      },
+      select: { conference_id: true },
+      orderBy: { last_event_at: 'asc' },
+      take: needed,
+    });
+    for (const p of pending) existing.add(p.conference_id);
   }
   return [...existing];
 }
