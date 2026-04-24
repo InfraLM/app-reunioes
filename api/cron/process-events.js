@@ -228,8 +228,15 @@ async function processConference(conferenceId) {
     try {
       const details = await getConferenceDetails(conferenceId, mp.user_email);
       const title = details?.space?.displayName || null;
-      const startTime = details?.startTime ? new Date(details.startTime) : null;
-      const endTime = details?.endTime ? new Date(details.endTime) : null;
+      // Meet API às vezes devolve string vazia ou não-ISO — precisamos rejeitar
+      // Invalid Date pra não quebrar o Prisma update (erro "Provided Date object is invalid")
+      const toValidDate = (v) => {
+        if (!v) return null;
+        const d = new Date(v);
+        return isNaN(d.getTime()) ? null : d;
+      };
+      const startTime = toValidDate(details?.startTime);
+      const endTime = toValidDate(details?.endTime);
 
       await prisma.eppMeetProcess.update({
         where: { conference_id: conferenceId },

@@ -474,9 +474,9 @@ function MinimalDetailsModal({ meeting, onClose }: { meeting: MeetStatus; onClos
           <Row label="Conference ID" value={meeting.conference_id} mono />
           {meeting.meeting_start_time && <Row label="Início" value={new Date(meeting.meeting_start_time).toLocaleString('pt-BR')} />}
           {meeting.meeting_end_time && <Row label="Fim" value={new Date(meeting.meeting_end_time).toLocaleString('pt-BR')} />}
-          <ArtifactRow label="Gravação" ok={meeting.has_recording} link={meeting.recording_drive_link} />
-          <ArtifactRow label="Transcrição" ok={meeting.has_transcript} link={meeting.transcript_drive_link} />
-          <ArtifactRow label="Smart Notes" ok={meeting.has_smart_note} link={meeting.smart_note_drive_link} />
+          <ArtifactRow label="Gravação" ok={meeting.has_recording} link={meeting.recording_original_link || meeting.recording_drive_link} />
+          <ArtifactRow label="Transcrição" ok={meeting.has_transcript} link={meeting.transcript_original_link || meeting.transcript_drive_link} />
+          <ArtifactRow label="Smart Notes" ok={meeting.has_smart_note} link={meeting.smart_note_original_link || meeting.smart_note_drive_link} />
           {meeting.drive_folder_link && (
             <a href={meeting.drive_folder_link} target="_blank" rel="noreferrer" className="block text-red-500 underline text-xs break-all">
               Abrir pasta no Drive
