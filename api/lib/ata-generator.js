@@ -185,12 +185,16 @@ function parseJsonFromResponse(text, stopReason) {
 async function extractAtaJson(input) {
   if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY ausente');
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  const message = await client.messages.create({
+  // Streaming é obrigatório quando max_tokens é alto — SDK força stream
+  // pra operações que podem demorar mais de 10min. Acumulamos o texto
+  // e tratamos como antes.
+  const stream = client.messages.stream({
     model: 'claude-sonnet-4-6',
     max_tokens: 32000, // era 8192 — reuniões longas geram JSON >23k chars e truncavam
     system: SYSTEM_PROMPT,
     messages: [{ role: 'user', content: buildUserPrompt(input) }],
   });
+  const message = await stream.finalMessage();
   const block = message.content?.find((b) => b.type === 'text');
   const text = block?.text || '';
   return parseJsonFromResponse(text, message.stop_reason);
