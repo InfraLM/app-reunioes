@@ -101,11 +101,10 @@ export default function ReunioesPage() {
       if (errCount > 0) {
         const msg = res?.results?.find((r: { status: string; message?: string }) => r.status === 'error')?.message || 'Erro desconhecido';
         alert(`Não foi possível enfileirar a geração da ata:\n\n${msg}\n\nVerifique /app/atas ou contate o admin.`);
-      } else {
-        // Sucesso: leva o usuário pra aba de processamento
-        window.location.href = '/app/atas';
-        return;
       }
+      // Fica na mesma tela — load() recarrega os cards, que mudam de
+      // "artefatos_completos" para "enfileirado" (azul). Usuário vê
+      // o progresso sem sair de /reunioes.
       await load();
     } catch (e) {
       const err = e as { response?: { data?: { summary?: { error?: number }; results?: Array<{ status: string; message?: string }> } }; message?: string };

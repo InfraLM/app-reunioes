@@ -1,18 +1,18 @@
 ### Backfill retroativo — roda uma vez pra popular meet_process/meet_status
 ### a partir dos eventos em epp_evento_track
 POST https://reuniao.lmedu.com.br/api/admin/backfill-all
-Authorization: Bearer VGrt3467899io7856R75798MINyhggfT
+Authorization: Bearer {{CRON_SECRET}}
 
 
 ### Processa em PARALELO todas as meets com mp.status != complete/error
 ### (dispara fan-out pra process-events). Zera a fila em ~30-60s.
 POST https://reuniao.lmedu.com.br/api/admin/process-all-pending
-Authorization: Bearer VGrt3467899io7856R75798MINyhggfT
+Authorization: Bearer {{CRON_SECRET}}
 
 
 ### Forçar processamento de UMA meet específica
 POST https://reuniao.lmedu.com.br/api/cron/process-events
-Authorization: Bearer VGrt3467899io7856R75798MINyhggfT
+Authorization: Bearer {{CRON_SECRET}}
 Content-Type: application/json
 
 {"conference_id": "conferenceRecords/rIQFq-Um5Ytil-Vmq9CFDxIROAIIigIgABgFCA"}
@@ -20,4 +20,4 @@ Content-Type: application/json
 
 ### Diagnóstico de uma meet específica (eventos, mp, ms)
 GET https://reuniao.lmedu.com.br/api/admin/diagnose?cid=conferenceRecords/rIQFq-Um5Ytil-Vmq9CFDxIROAIIigIgABgFCA
-Authorization: Bearer VGrt3467899io7856R75798MINyhggfT
+Authorization: Bearer {{CRON_SECRET}}

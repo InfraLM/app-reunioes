@@ -118,16 +118,68 @@ ${JSON.stringify(input, null, 2)}
 5. Return ONLY valid JSON matching the structure in the system prompt.`;
 }
 
-function parseJsonFromResponse(text) {
+/**
+ * Se Claude bateu max_tokens no meio do JSON, tenta fechar chaves/colchetes
+ * pendentes pra salvar o máximo de dados possível.
+ * Retorna objeto parseado ou null se não conseguir recuperar.
+ */
+function tryRecoverTruncatedJson(partial) {
+  if (!partial || partial.length < 2) return null;
+  // Varre contando estruturas abertas, ignorando conteúdo dentro de strings.
+  const stack = [];
+  let inString = false;
+  let escape = false;
+  let lastValidEnd = -1;
+  for (let i = 0; i < partial.length; i++) {
+    const ch = partial[i];
+    if (escape) { escape = false; continue; }
+    if (ch === '\\') { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === '{' || ch === '[') stack.push(ch);
+    else if (ch === '}' || ch === ']') {
+      stack.pop();
+      if (stack.length === 0) lastValidEnd = i;
+    }
+  }
+
+  // Se acabou dentro de string, fecha a string.
+  let fixed = partial;
+  if (inString) fixed += '"';
+  // Remove vírgula/dois-pontos pendente antes do fecho.
+  fixed = fixed.replace(/[,:]\s*$/, '');
+  // Fecha estruturas pendentes na ordem inversa.
+  while (stack.length) {
+    fixed += stack.pop() === '{' ? '}' : ']';
+  }
+  try {
+    return JSON.parse(fixed);
+  } catch {
+    return null;
+  }
+}
+
+function parseJsonFromResponse(text, stopReason) {
   if (!text) throw new Error('Resposta vazia da Anthropic');
   let str = text.trim();
   const fence = str.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (fence) str = fence[1].trim();
   const first = str.indexOf('{');
   const last = str.lastIndexOf('}');
-  if (first === -1 || last === -1 || last <= first) throw new Error('JSON não encontrado na resposta');
-  const json = str.slice(first, last + 1);
-  return JSON.parse(json);
+  if (first === -1) throw new Error('JSON não encontrado na resposta');
+  // Se o modelo truncou em max_tokens, last pode ser -1 ou o JSON pode estar
+  // incompleto mesmo com } encontrado. Tenta parsear; se falhar, usa recovery.
+  const json = last > first ? str.slice(first, last + 1) : str.slice(first);
+  try {
+    return JSON.parse(json);
+  } catch (err) {
+    const recovered = tryRecoverTruncatedJson(str.slice(first));
+    if (recovered) {
+      logger.warn(`[ata] JSON truncado recuperado (stop_reason=${stopReason || 'unknown'}, tamanho=${json.length})`);
+      return recovered;
+    }
+    throw new Error(`JSON malformado (${err.message.slice(0, 120)}). Tamanho: ${json.length}, stop_reason: ${stopReason || 'unknown'}`);
+  }
 }
 
 async function extractAtaJson(input) {
@@ -135,13 +187,13 @@ async function extractAtaJson(input) {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const message = await client.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 8192,
+    max_tokens: 32000, // era 8192 — reuniões longas geram JSON >23k chars e truncavam
     system: SYSTEM_PROMPT,
     messages: [{ role: 'user', content: buildUserPrompt(input) }],
   });
   const block = message.content?.find((b) => b.type === 'text');
   const text = block?.text || '';
-  return parseJsonFromResponse(text);
+  return parseJsonFromResponse(text, message.stop_reason);
 }
 
 // ============================================================
