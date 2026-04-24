@@ -38,10 +38,14 @@ export default async function handler(req, res) {
     const authHeader = req.headers.authorization;
     const token = authHeader?.split(' ')[1];
     if (!token) return res.status(401).json({ error: 'Token não fornecido' });
-    try {
-      jwt.verify(token, process.env.JWT_SECRET || 'secret-default');
-    } catch {
-      return res.status(401).json({ error: 'Token inválido' });
+    // Aceita CRON_SECRET (para rodar via .http/curl) OU JWT admin (via app logado).
+    const isCronSecret = process.env.CRON_SECRET && token === process.env.CRON_SECRET;
+    if (!isCronSecret) {
+      try {
+        jwt.verify(token, process.env.JWT_SECRET || 'secret-default');
+      } catch {
+        return res.status(401).json({ error: 'Token inválido' });
+      }
     }
 
     const appUrl = process.env.APP_URL;
