@@ -109,10 +109,34 @@ export default function ReuniaoCard({ meeting, onClick, onCreateAta, actionLoadi
     meeting.status === 'artefatos_faltantes' ||
     meeting.status === 'erro';
 
+  const isAtaGerada = meeting.status === 'ata_gerada';
+  const gov = meeting.governanca;
+
   const artefatos = [
-    { label: 'Gravação',    ok: meeting.has_recording,  link: meeting.recording_drive_link,  missing: 'Não gravada' },
-    { label: 'Transcrição', ok: meeting.has_transcript, link: meeting.transcript_drive_link, missing: 'Não transcrita' },
-    { label: 'Anotações',   ok: meeting.has_smart_note, link: meeting.smart_note_drive_link, missing: 'Sem anotações' },
+    {
+      label: 'Gravação',
+      ok: meeting.has_recording,
+      link: isAtaGerada
+        ? (gov?.link_gravacao || meeting.recording_drive_link)
+        : (meeting.recording_original_link || meeting.recording_drive_link),
+      missing: 'Não gravada',
+    },
+    {
+      label: 'Transcrição',
+      ok: meeting.has_transcript,
+      link: isAtaGerada
+        ? (gov?.link_transcricao || meeting.transcript_drive_link)
+        : (meeting.transcript_original_link || meeting.transcript_drive_link),
+      missing: 'Não transcrita',
+    },
+    {
+      label: 'Anotações',
+      ok: meeting.has_smart_note,
+      link: isAtaGerada
+        ? (gov?.link_anotacao || meeting.smart_note_drive_link)
+        : (meeting.smart_note_original_link || meeting.smart_note_drive_link),
+      missing: 'Sem anotações',
+    },
   ];
 
   return (

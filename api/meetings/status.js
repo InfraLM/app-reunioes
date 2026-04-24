@@ -54,6 +54,8 @@ export default async function handler(req, res) {
       select: {
         conference_id: true,
         drive_folder_link: true,
+        meeting_start_time: true,
+        meeting_end_time: true,
         recording_drive_link: true,
         transcript_drive_link: true,
         smart_note_drive_link: true,
@@ -90,6 +92,10 @@ export default async function handler(req, res) {
     const gov = govMap.get(s.conference_id) || null;
     return {
       ...s,
+      // Fallback para meets históricas em que syncMeetStatus não propagou
+      // start/end (ex: entraram em ata_gerada antes do ended chegar).
+      meeting_start_time: s.meeting_start_time || mp.meeting_start_time || null,
+      meeting_end_time: s.meeting_end_time || mp.meeting_end_time || null,
       drive_folder_link: mp.drive_folder_link || null,
       recording_drive_link: mp.recording_drive_link || null,
       transcript_drive_link: mp.transcript_drive_link || null,

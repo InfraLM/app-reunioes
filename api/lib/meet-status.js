@@ -29,6 +29,10 @@ async function syncMeetStatus(mp, artefatosCompletos, aggregate) {
         has_recording: mp.has_recording,
         has_transcript: mp.has_transcript,
         has_smart_note: mp.has_smart_note,
+        // Propagar start/end quando forem resolvidos depois da meet já ter sido
+        // enfileirada — caso comum: evento 'ended' chega após 'recording'/'transcript'.
+        ...(mp.meeting_start_time && { meeting_start_time: mp.meeting_start_time }),
+        ...(mp.meeting_end_time && { meeting_end_time: mp.meeting_end_time }),
         data_ultimo_artefato: aggregate.last_event_at,
         updated_at: new Date(),
       },
