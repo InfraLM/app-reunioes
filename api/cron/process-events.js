@@ -24,9 +24,9 @@ const {
 const config = require('../lib/config');
 const { syncMeetStatus, STATUS_POS_ENVIO } = require('../lib/meet-status');
 
-const MAX_MEETS_PER_RUN = 8;
-const MAX_NEW_PER_RUN = 3;     // slot reservado para meets novas (sem mp ainda)
-const MAX_PENDING_PER_RUN = 5; // slot reservado para pendings com mp já existente
+const MAX_MEETS_PER_RUN = 18;
+const MAX_NEW_PER_RUN = 3;      // slot reservado para meets novas (sem mp ainda)
+const MAX_PENDING_PER_RUN = 15; // slot reservado para pendings com mp existente — cobre fila acumulada
 
 /** Títulos considerados "padrão Meet" — candidatos para ser substituídos
  *  pelo título do Calendar (quando disponível) ou pela IA na geração de ata. */
