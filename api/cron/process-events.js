@@ -24,7 +24,9 @@ const {
 const config = require('../lib/config');
 const { syncMeetStatus, STATUS_POS_ENVIO } = require('../lib/meet-status');
 
-const MAX_MEETS_PER_RUN = 5;
+const MAX_MEETS_PER_RUN = 8;
+const MAX_NEW_PER_RUN = 3;     // slot reservado para meets novas (sem mp ainda)
+const MAX_PENDING_PER_RUN = 5; // slot reservado para pendings com mp já existente
 
 /** Títulos considerados "padrão Meet" — candidatos para ser substituídos
  *  pelo título do Calendar (quando disponível) ou pela IA na geração de ata. */
@@ -125,7 +127,13 @@ export default async function handler(req, res) {
 }
 
 async function findPendingConferenceIds(limit) {
-  // 1. Prioridade: conferences recém-recebidas via webhook (sem meet_process ainda)
+  // Cada tipo de fila tem seu próprio slot pra evitar que newRows (meets sem mp
+  // ainda) sature o budget e bloqueie pendings com eventos de artefato que chegaram
+  // depois — era o que acontecia antes: 5+ newRows → zero pendings processadas.
+  const newLimit = Math.min(MAX_NEW_PER_RUN, limit);
+  const pendingLimit = Math.min(MAX_PENDING_PER_RUN, limit);
+
+  // 1. Meets novas (eventos chegaram mas ainda não existe mp)
   const newRows = await prisma.$queryRaw`
     SELECT DISTINCT e.conference_id
     FROM lovable.epp_evento_track e
@@ -134,27 +142,25 @@ async function findPendingConferenceIds(limit) {
       AND e.conference_id IS NOT NULL
       AND mp.conference_id IS NULL
     ORDER BY e.conference_id
-    LIMIT ${limit}
+    LIMIT ${newLimit}
   `;
   const existing = new Set(newRows.map((r) => r.conference_id));
 
-  // 2. Completa com meet_process pending/processing, mas só os não tocados nos últimos 2 min
-  //    (evita re-processar a mesma a cada tick quando nada mudou)
-  const needed = limit - existing.size;
-  if (needed > 0) {
-    const staleThreshold = new Date(Date.now() - 2 * 60 * 1000);
-    const pending = await prisma.eppMeetProcess.findMany({
-      where: {
-        status: { notIn: ['complete', 'error'] },
-        updated_at: { lt: staleThreshold },
-      },
-      select: { conference_id: true },
-      orderBy: { last_event_at: 'asc' },
-      take: needed,
-    });
-    for (const p of pending) existing.add(p.conference_id);
-  }
-  return [...existing];
+  // 2. Pendings com mp existente (stale há mais de 2 min)
+  //    SEMPRE roda, independente de quantas newRows tiveram.
+  const staleThreshold = new Date(Date.now() - 2 * 60 * 1000);
+  const pending = await prisma.eppMeetProcess.findMany({
+    where: {
+      status: { notIn: ['complete', 'error'] },
+      updated_at: { lt: staleThreshold },
+    },
+    select: { conference_id: true },
+    orderBy: { last_event_at: 'asc' },
+    take: pendingLimit,
+  });
+  for (const p of pending) existing.add(p.conference_id);
+
+  return [...existing].slice(0, limit);
 }
 
 /**
