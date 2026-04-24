@@ -54,6 +54,7 @@ export default async function handler(req, res) {
       select: {
         conference_id: true,
         drive_folder_link: true,
+        meeting_title: true,
         meeting_start_time: true,
         meeting_end_time: true,
         recording_drive_link: true,
@@ -93,7 +94,9 @@ export default async function handler(req, res) {
     return {
       ...s,
       // Fallback para meets históricas em que syncMeetStatus não propagou
-      // start/end (ex: entraram em ata_gerada antes do ended chegar).
+      // title/start/end (ex: entraram em ata_gerada antes do step 2c extrair
+      // título do Calendar/Drive ou antes do 'ended' chegar).
+      meeting_title: s.meeting_title || mp.meeting_title || null,
       meeting_start_time: s.meeting_start_time || mp.meeting_start_time || null,
       meeting_end_time: s.meeting_end_time || mp.meeting_end_time || null,
       drive_folder_link: mp.drive_folder_link || null,
