@@ -127,38 +127,68 @@ export default async function handler(req, res) {
 }
 
 async function findPendingConferenceIds(limit) {
-  // Cada tipo de fila tem seu próprio slot pra evitar que newRows (meets sem mp
-  // ainda) sature o budget e bloqueie pendings com eventos de artefato que chegaram
-  // depois — era o que acontecia antes: 5+ newRows → zero pendings processadas.
+  // 3 buckets ordenados por prioridade pra evitar starvation de meets novas
+  // por meets velhas em loop (que ficam pending sem chance de avançar):
+  //
+  //  A) Mismatch (5):  já tem mp, mas evento_track tem evento de artefato
+  //                    is_monitored=true que ainda não foi agregado em mp.has_*.
+  //                    Caso típico: smart_note chegou depois de a meet ser
+  //                    criada e ninguém re-processou.
+  //  B) New (3):       evento_track tem conference_id sem mp ainda.
+  //  C) Pending (≤7):  fallback geral de pending stale, ordenado DESC
+  //                    (mais recentes primeiro, NÃO mais antigas) pra não
+  //                    voltar a starvation.
+  const mismatchLimit = 5;
   const newLimit = Math.min(MAX_NEW_PER_RUN, limit);
-  const pendingLimit = Math.min(MAX_PENDING_PER_RUN, limit);
+  const pendingLimit = Math.max(0, limit - mismatchLimit - newLimit);
 
-  // 1. Meets novas (eventos chegaram mas ainda não existe mp)
-  const newRows = await prisma.$queryRaw`
-    SELECT DISTINCT e.conference_id
-    FROM lovable.epp_evento_track e
-    LEFT JOIN lovable.epp_meet_process mp ON mp.conference_id = e.conference_id
-    WHERE e.is_monitored = true
-      AND e.conference_id IS NOT NULL
-      AND mp.conference_id IS NULL
-    ORDER BY e.conference_id
-    LIMIT ${newLimit}
+  // A) Mismatch — eventos chegaram mas mp.has_* ficou desatualizado
+  const mismatch = await prisma.$queryRaw`
+    SELECT DISTINCT et.conference_id
+    FROM lovable.epp_evento_track et
+    JOIN lovable.epp_meet_process mp ON mp.conference_id = et.conference_id
+    WHERE et.is_monitored = true
+      AND et.event_type IN ('recording', 'transcript', 'smart_note')
+      AND mp.status NOT IN ('complete', 'error')
+      AND (
+        (et.event_type = 'recording' AND mp.has_recording = false)
+        OR (et.event_type = 'transcript' AND mp.has_transcript = false)
+        OR (et.event_type = 'smart_note' AND mp.has_smart_note = false)
+      )
+    ORDER BY et.conference_id
+    LIMIT ${mismatchLimit}
   `;
-  const existing = new Set(newRows.map((r) => r.conference_id));
+  const existing = new Set(mismatch.map((r) => r.conference_id));
 
-  // 2. Pendings com mp existente (stale há mais de 2 min)
-  //    SEMPRE roda, independente de quantas newRows tiveram.
-  const staleThreshold = new Date(Date.now() - 2 * 60 * 1000);
-  const pending = await prisma.eppMeetProcess.findMany({
-    where: {
-      status: { notIn: ['complete', 'error'] },
-      updated_at: { lt: staleThreshold },
-    },
-    select: { conference_id: true },
-    orderBy: { last_event_at: 'asc' },
-    take: pendingLimit,
-  });
-  for (const p of pending) existing.add(p.conference_id);
+  // B) Meets novas (eventos chegaram mas ainda não existe mp)
+  if (newLimit > 0) {
+    const newRows = await prisma.$queryRaw`
+      SELECT DISTINCT e.conference_id
+      FROM lovable.epp_evento_track e
+      LEFT JOIN lovable.epp_meet_process mp ON mp.conference_id = e.conference_id
+      WHERE e.is_monitored = true
+        AND e.conference_id IS NOT NULL
+        AND mp.conference_id IS NULL
+      ORDER BY e.conference_id
+      LIMIT ${newLimit}
+    `;
+    for (const r of newRows) existing.add(r.conference_id);
+  }
+
+  // C) Pending stale fallback — DESC pra priorizar meets recentes
+  if (pendingLimit > 0) {
+    const staleThreshold = new Date(Date.now() - 2 * 60 * 1000);
+    const pending = await prisma.eppMeetProcess.findMany({
+      where: {
+        status: { notIn: ['complete', 'error'] },
+        updated_at: { lt: staleThreshold },
+      },
+      select: { conference_id: true },
+      orderBy: { last_event_at: 'desc' }, // ASC trocado por DESC: meets recentes primeiro
+      take: pendingLimit,
+    });
+    for (const p of pending) existing.add(p.conference_id);
+  }
 
   return [...existing].slice(0, limit);
 }
