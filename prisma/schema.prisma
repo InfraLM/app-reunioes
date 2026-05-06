@@ -274,3 +274,28 @@ model EppMeetStatus {
   @@map("epp_meet_status")
   @@schema("lovable")
 }
+
+// ============================================================
+// Tabela: Uso da API de IA (tracking de chamadas Anthropic)
+// ============================================================
+// Registra cada chamada feita a um modelo de IA, com tokens consumidos
+// e custo calculado em USD. Alimenta o dashboard /app/uso-ia.
+model EppAiUsage {
+  id                    BigInt   @id @default(autoincrement())
+  conference_id         String?  @db.VarChar(255)       // nullable: nem toda chamada IA é por meet
+  endpoint              String   @db.VarChar(50)        // ex: 'generate-ata'
+  model                 String   @db.VarChar(60)        // ex: 'claude-sonnet-4-6'
+  input_tokens          Int      @default(0)
+  output_tokens         Int      @default(0)
+  cache_creation_tokens Int      @default(0)
+  cache_read_tokens     Int      @default(0)
+  cost_usd              Decimal  @default(0) @db.Decimal(12, 6)
+  status                String   @default("success") @db.VarChar(20) // 'success' | 'error'
+  error_message         String?  @db.Text
+  created_at            DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([created_at(sort: Desc)], map: "idx_ai_usage_created_at")
+  @@index([endpoint, created_at], map: "idx_ai_usage_endpoint_date")
+  @@map("epp_ai_usage")
+  @@schema("lovable")
+}

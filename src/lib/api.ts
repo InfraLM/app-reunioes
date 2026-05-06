@@ -131,6 +131,10 @@ export const statsService = {
     const response = await api.get('/stats/dashboard');
     return response.data;
   },
+  aiUsage: async (params: { period?: string; from?: string; to?: string }) => {
+    const response = await api.get('/stats/ai-usage', { params });
+    return response.data;
+  },
 };
 
 // Serviço de user_pastas (admin)

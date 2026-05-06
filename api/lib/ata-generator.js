@@ -2,6 +2,7 @@ const { google } = require('googleapis');
 const Anthropic = require('@anthropic-ai/sdk').default;
 const logger = require('./logger');
 const config = require('./config');
+const { recordAiUsage } = require('./ai-usage');
 
 // ============================================================
 // Drive helpers
@@ -185,16 +186,42 @@ function parseJsonFromResponse(text, stopReason) {
 async function extractAtaJson(input) {
   if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY ausente');
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  // Streaming é obrigatório quando max_tokens é alto — SDK força stream
-  // pra operações que podem demorar mais de 10min. Acumulamos o texto
-  // e tratamos como antes.
-  const stream = client.messages.stream({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 32000, // era 8192 — reuniões longas geram JSON >23k chars e truncavam
-    system: SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: buildUserPrompt(input) }],
+  const MODEL = 'claude-sonnet-4-6';
+  const conferenceId = input?.conference_id || null;
+
+  let message;
+  try {
+    // Streaming é obrigatório quando max_tokens é alto — SDK força stream
+    // pra operações que podem demorar mais de 10min.
+    const stream = client.messages.stream({
+      model: MODEL,
+      max_tokens: 32000, // reuniões longas geram JSON >23k chars
+      system: SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: buildUserPrompt(input) }],
+    });
+    message = await stream.finalMessage();
+  } catch (err) {
+    // Registra uso falho (não temos tokens aqui, mas loga o incidente)
+    await recordAiUsage({
+      endpoint: 'generate-ata',
+      model: MODEL,
+      usage: {},
+      conference_id: conferenceId,
+      status: 'error',
+      error_message: err.message,
+    });
+    throw err;
+  }
+
+  // Grava uso bem-sucedido (independente de parse JSON funcionar — a chamada à IA foi feita e custou).
+  await recordAiUsage({
+    endpoint: 'generate-ata',
+    model: MODEL,
+    usage: message.usage || {},
+    conference_id: conferenceId,
+    status: 'success',
   });
-  const message = await stream.finalMessage();
+
   const block = message.content?.find((b) => b.type === 'text');
   const text = block?.text || '';
   return parseJsonFromResponse(text, message.stop_reason);
