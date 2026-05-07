@@ -44,6 +44,10 @@ export default async function handler(req, res) {
     where = { status: 'ata_gerada' };
   }
 
+  // Filtro de data pra reduzir volume: 60 dias é generoso pra uso típico.
+  // Front tem filtros mais restritos (Hoje/48h/etc) — esse é só um teto.
+  const cutoff60d = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
+
   const [statuses, processes, governancas] = await Promise.all([
     prisma.eppMeetStatus.findMany({
       where,
@@ -51,6 +55,12 @@ export default async function handler(req, res) {
       take: 500,
     }),
     prisma.eppMeetProcess.findMany({
+      where: {
+        OR: [
+          { meeting_start_time: { gte: cutoff60d } },
+          { meeting_start_time: null, last_event_at: { gte: cutoff60d } },
+        ],
+      },
       select: {
         conference_id: true,
         drive_folder_link: true,
@@ -64,8 +74,13 @@ export default async function handler(req, res) {
         transcript_original_link: true,
         smart_note_original_link: true,
       },
+      take: 500,
     }),
+    // NÃO inclui o campo `ata` no select — é HTML completo (>50KB cada),
+    // multiplica o volume transferido por dezenas de MB. has_ata é
+    // calculado client-side via `ata_pdf_link`.
     prisma.eppReunioesGovernanca.findMany({
+      where: { data_reuniao: { gte: cutoff60d } },
       select: {
         conference_id: true,
         data_reuniao: true,
@@ -73,7 +88,6 @@ export default async function handler(req, res) {
         hora_fim: true,
         responsavel: true,
         titulo_reuniao: true,
-        ata: true,
         ata_link_download: true,
         ata_pdf_link: true,
         link_gravacao: true,
@@ -82,6 +96,7 @@ export default async function handler(req, res) {
         participantes_nomes: true,
         resumo_executivo: true,
       },
+      take: 500,
     }),
   ]);
 
@@ -107,7 +122,9 @@ export default async function handler(req, res) {
       transcript_original_link: mp.transcript_original_link || null,
       smart_note_original_link: mp.smart_note_original_link || null,
       governanca: gov,
-      has_ata: !!(gov && gov.ata && gov.ata.trim().length > 0),
+      // has_ata via ata_pdf_link (sempre preenchido quando ata é gerada),
+      // pra evitar transferir o HTML completo da ata no listing.
+      has_ata: !!(gov && gov.ata_pdf_link),
     };
   });
 

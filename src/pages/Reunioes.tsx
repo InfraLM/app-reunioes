@@ -79,7 +79,7 @@ export default function ReunioesPage() {
 
   useEffect(() => {
     load();
-    const id = setInterval(load, 30000); // atualiza a cada 30s
+    const id = setInterval(load, 90000); // atualiza a cada 90s (era 30s, gerava carga 3× alta no backend)
     return () => clearInterval(id);
   }, [load]);
 

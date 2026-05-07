@@ -60,7 +60,10 @@ async function recordAiUsage({
       },
     });
   } catch (err) {
-    logger.warn(`[ai-usage] falha ao gravar tracking: ${err.message}`);
+    // P2021 = "table does not exist" — caso típico se o CREATE TABLE
+    // não foi rodado no banco. Loga como ERROR pra aparecer destacado
+    // nos logs Vercel e facilitar diagnóstico.
+    logger.error(`[ai-usage] falha ao gravar tracking: ${err.message} (code: ${err.code || 'n/a'})`);
   }
 }
 
