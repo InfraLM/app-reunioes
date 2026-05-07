@@ -21,3 +21,11 @@ Content-Type: application/json
 ### Diagnóstico de uma meet específica (eventos, mp, ms)
 GET https://reuniao.lmedu.com.br/api/admin/diagnose?cid=conferenceRecords/rIQFq-Um5Ytil-Vmq9CFDxIROAIIigIgABgFCA
 Authorization: Bearer {{CRON_SECRET}}
+
+
+### Reconectar TODAS as subscriptions Workspace Events (renova TTL ~7 dias)
+### Demora ~30-60s — reconecta sequencialmente com delay 1.2s entre users.
+### Roda quando webhooks de artefato param de chegar (subscriptions expiram).
+### Auth: JWT do user admin logado no app (NÃO é CRON_SECRET).
+POST https://reuniao.lmedu.com.br/api/subscriptions/reconnect-all
+Authorization: Bearer {{JWT_ADMIN}}
